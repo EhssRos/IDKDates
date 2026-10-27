@@ -1,0 +1,37 @@
+{
+  "name": "idkdates",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "You pick the mood. IDKDates picks the place.",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run tokens && npm run typecheck && vite build",
+    "preview": "vite preview --port 4173 --strictPort",
+    "tokens": "node scripts/gen-tokens.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.core.json",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build && playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "leaflet": "1.9.4",
+    "opening_hours": "3.15.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "suncalc": "1.9.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.56.0",
+    "@types/leaflet": "1.9.22",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.3"
+  }
+}

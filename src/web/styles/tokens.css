@@ -1,0 +1,60 @@
+/* Generated from design/tokens.json by scripts/gen-tokens.mjs. Do not edit by hand. */
+:root {
+  --paper: #F6F7F5;
+  --surface: #FFFFFF;
+  --tint: #E8ECEA;
+  --ink: #17262B;
+  --on-ink: #F6F7F5;
+  --muted: #56666B;
+  --line: #DCE2E0;
+  --control: #75858A;
+  --pick: #FFC21A;
+  --on-pick: #17262B;
+  --pick-rule: #17262B40;
+  --danger: #B3261E;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  --font-sans: "Schibsted Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #101719;
+    --surface: #182225;
+    --tint: #22302F;
+    --ink: #EAF0EF;
+    --on-ink: #101719;
+    --muted: #9DAEB1;
+    --line: #2A3739;
+    --control: #6C7F82;
+    --pick: #FFC21A;
+    --on-pick: #17262B;
+    --pick-rule: #17262B40;
+    --danger: #FF8F86;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #101719;
+  --surface: #182225;
+  --tint: #22302F;
+  --ink: #EAF0EF;
+  --on-ink: #101719;
+  --muted: #9DAEB1;
+  --line: #2A3739;
+  --control: #6C7F82;
+  --pick: #FFC21A;
+  --on-pick: #17262B;
+  --pick-rule: #17262B40;
+  --danger: #FF8F86;
+  color-scheme: dark;
+}

@@ -1,0 +1,7 @@
+{
+  // Proves src/core never touches the browser: it is type-checked without any DOM types,
+  // so it can move unchanged into the native app.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "lib": ["ES2022"], "types": [] },
+  "include": ["src/core"]
+}
