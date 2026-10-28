@@ -213,3 +213,10 @@ footer p{margin:var(--space-1) 0}
 .saved-head{display:block;width:100%;text-align:left;background:none;border:0;padding:var(--space-3) 0;cursor:pointer;color:var(--ink)}
 .saved-body{padding:0 0 var(--space-4)}
 .saved-body .hint{margin:0 0 var(--space-2)}
+
+/* Why nothing fits */
+.why-list{text-align:left;margin:var(--space-3) 0 0;padding-left:var(--space-6)}
+.why-list li{margin-top:var(--space-1)}
+.fixes{margin-top:var(--space-4)}
+.fixes p{font-weight:600;margin-bottom:var(--space-2)}
+.fixes .chips{justify-content:center}

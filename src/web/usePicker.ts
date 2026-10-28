@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { OpeningHoursLib } from "../core/hours";
-import { listFor, listPlaceFits, toPlace } from "../core/lists";
-import { eligible, shuffle, weightedPick } from "../core/picker";
+import { listFor, listPlaceLeftOut, toPlace } from "../core/lists";
+import { countLeftOut, leftOut, shuffle, weightedPick, type LeftOut, type LeftOutCounts } from "../core/picker";
 import { radiusM } from "../core/travel";
 import type { Partner, Place, PlaceList, Settings, Visit } from "../core/types";
 import { isAbort } from "../data/http";
@@ -15,7 +15,7 @@ export type PickState =
   | { kind: "idle" }
   | { kind: "loading"; settings: Settings; slow: boolean }
   | { kind: "ticket"; place: Place; pool: number; settings: Settings; hoursLib: OpeningHoursLib | null; fromList?: string }
-  | { kind: "empty"; settings: Settings; turnedDown: boolean; fromList?: string; listEmpty?: boolean }
+  | { kind: "empty"; settings: Settings; turnedDown: boolean; fromList?: string; listEmpty?: boolean; found: number; counts: LeftOutCounts; details?: { name: string; reason: LeftOut }[] }
   | { kind: "error"; reasons: string[] };
 
 /** After this long, the loading screen says the map is slow and offers to stop. */
@@ -35,11 +35,11 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
   const latest = useRef({ settings, visits, lists });
   latest.current = { settings, visits, lists };
 
-  const roll = useCallback(async () => {
+  const roll = useCallback(async (patch?: Partial<Settings>) => {
     inflight.current?.abort();
     const ctl = new AbortController();
     inflight.current = ctl;
-    const s = latest.current.settings;
+    const s = { ...latest.current.settings, ...patch };
     const visited = new Set(latest.current.visits.map(v => v.placeId));
     const r = round.current;
     setState({ kind: "loading", settings: s, slow: false });
@@ -53,29 +53,38 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
       if (s.source === "list") {
         // Your own list: no map server needed.
         const list = listFor(latest.current.lists, s.listId);
-        const options = list.places.filter(sp => listPlaceFits(sp, { settings: s, rejected: r.rejected, now: new Date(), hoursLib }));
+        const lc = { settings: s, rejected: r.rejected, now: new Date(), hoursLib };
+        const checked = list.places.map(sp => ({ sp, reason: listPlaceLeftOut(sp, lc) }));
+        const options = checked.filter(c => !c.reason).map(c => c.sp);
         if (options.length) {
           r.count++;
           const pick = options[Math.floor(Math.random() * options.length)];
           setState({ kind: "ticket", place: toPlace(pick, s), pool: options.length, settings: s, hoursLib, fromList: list.name });
         } else {
-          setState({ kind: "empty", settings: s, turnedDown: r.rejected.size > 0, fromList: list.name, listEmpty: !list.places.length });
+          setState({
+            kind: "empty", settings: s, turnedDown: r.rejected.size > 0, fromList: list.name, listEmpty: !list.places.length,
+            found: list.places.length, counts: countLeftOut(checked.map(c => c.reason)),
+            details: checked.map(c => ({ name: c.sp.name, reason: c.reason! }))
+          });
         }
         return;
       }
 
       const ctx = { settings: s, visited, rejected: r.rejected, now: new Date(), hoursLib };
+      const reasons: (LeftOut | null)[] = [];
       for (const mood of shuffle(s.moods)) {
         const places = await fetchPlaces(mood, s.refine, s.loc!, radiusM(s.time, s.mode), { signal: ctl.signal, cache: placeCache });
         if (ctl.signal.aborted) return;
-        const options = places.filter(p => eligible(p, ctx));
+        const checked = places.map(p => ({ p, reason: leftOut(p, ctx) }));
+        const options = checked.filter(c => !c.reason).map(c => c.p);
         if (options.length) {
           r.count++;
           setState({ kind: "ticket", place: weightedPick(options), pool: options.length, settings: s, hoursLib });
           return;
         }
+        reasons.push(...checked.map(c => c.reason));
       }
-      setState({ kind: "empty", settings: s, turnedDown: r.rejected.size > 0 });
+      setState({ kind: "empty", settings: s, turnedDown: r.rejected.size > 0, found: reasons.length, counts: countLeftOut(reasons) });
     } catch (e) {
       if (ctl.signal.aborted || isAbort(e)) return;
       setState({ kind: "error", reasons: e instanceof MapUnavailableError ? e.reasons : [e instanceof Error ? e.message : String(e)] });
@@ -85,10 +94,11 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
     }
   }, []);
 
-  const start = useCallback(() => {
-    const n = latest.current.settings.vetoCount;
+  /** Starts a new pick. `patch` applies setting changes the caller is making at the same moment. */
+  const start = useCallback((patch?: Partial<Settings>) => {
+    const n = { ...latest.current.settings, ...patch }.vetoCount;
     round.current = { vetoes: { a: n, b: n }, rejected: new Set(), done: false, count: 0 };
-    return roll();
+    return roll(patch);
   }, [roll]);
 
   const veto = useCallback((who: Partner) => {
@@ -96,7 +106,7 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
     if (state.kind !== "ticket" || r.vetoes[who] <= 0) return;
     r.vetoes[who]--;
     r.rejected.add(state.place.id);
-    return roll();
+    return roll(state.settings);
   }, [roll, state]);
 
   const stop = useCallback(() => {
@@ -107,5 +117,5 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
 
   const markDone = useCallback(() => { round.current.done = true; setState(s => ({ ...s })); }, []);
 
-  return { state, round: round.current, start, retry: roll, veto, stop, markDone, busy: state.kind === "loading" };
+  return { state, round: round.current, start, retry: () => roll(), veto, stop, markDone, busy: state.kind === "loading" };
 }

@@ -129,7 +129,8 @@ export function PickView({ settings, update, visits, setVisits, names, lists, se
       <p className="form-msg" id="formMsg" role="alert">{formMsg}</p>
 
       <div id="result" aria-live="polite">
-        <Result picker={picker} names={names} onAccept={accept} lists={lists} setLists={setLists} />
+        <Result picker={picker} names={names} onAccept={accept} lists={lists} setLists={setLists}
+          onFix={patch => { update(patch); picker.start(patch); }} />
       </div>
     </>
   );

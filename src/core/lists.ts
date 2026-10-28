@@ -1,7 +1,7 @@
 import { chainTest, refineOk } from "./filters";
 import { openInfo, type OpeningHoursLib } from "./hours";
 import { MOOD_IDS, MOODS } from "./moods";
-import { arrivalAt, minutesTo } from "./picker";
+import { arrivalAt, minutesTo, type LeftOut } from "./picker";
 import type { MoodId, Place, PlaceList, SavedPlace, Settings, Tags } from "./types";
 
 /** Which moods a place fits, judged from its map data. */
@@ -64,20 +64,26 @@ export interface ListPickContext {
  * Whether a saved place fits right now. Chains and places you’ve been to are not skipped:
  * you saved them on purpose. With no mood picked, anything on the list goes.
  */
-export function listPlaceFits(sp: SavedPlace, c: ListPickContext): boolean {
+export function listPlaceLeftOut(sp: SavedPlace, c: ListPickContext): LeftOut | null {
   const s = c.settings;
-  if (c.rejected.has(sp.id)) return false;
-  if (!matchingMoods(sp, s).length) return false;
+  if (c.rejected.has(sp.id)) return { why: "turnedDown" };
+  if (s.moods.length && !sp.moods.some(m => s.moods.includes(m))) return { why: "mood" };
+  if (!matchingMoods(sp, s).length) return { why: "filters" };
   const asPlace = toPlace(sp, s);
   if (!s.anyDistance) {
-    if (!s.loc || minutesTo(asPlace, s) > s.time) return false;
+    if (!s.loc) return { why: "noStart" };
+    const minutes = minutesTo(asPlace, s);
+    if (minutes > s.time) return { why: "tooFar", minutes };
   }
   if (s.skipClosed) {
     const arrival = s.loc ? arrivalAt(asPlace, s, c.now) : c.now;
-    if (openInfo(c.hoursLib, asPlace, s.loc, arrival).state === "closed") return false;
+    const info = openInfo(c.hoursLib, asPlace, s.loc, arrival);
+    if (info.state === "closed") return { why: "closed", opens: info.opens ?? null, closingSoon: !!info.closingSoon };
   }
-  return true;
+  return null;
 }
+
+export const listPlaceFits = (sp: SavedPlace, c: ListPickContext): boolean => listPlaceLeftOut(sp, c) === null;
 
 /** A saved place as a pickable place, under the first mood it’s being picked for. */
 export const toPlace = (sp: SavedPlace, s: Settings): Place =>

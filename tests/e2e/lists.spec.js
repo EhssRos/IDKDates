@@ -123,7 +123,7 @@ test("nothing fitting, and an empty list, say what to do", async ({ app, page })
   await app.refine("Asian").click();
   await app.pick();
   await expect(page.locator("#result")).toContainText("Nothing on your list fits");
-  await expect(page.locator("#result")).toContainText("“Any distance”");
+  await expect(page.locator(".why-list li")).toHaveText(["Nonna: doesn’t match your filters"]);
   // An empty list stops before picking.
   await openLists(page);
   await page.getByRole("button", { name: "New list" }).click();
@@ -186,4 +186,45 @@ test("vetoes work when picking from a list", async ({ app, page }) => {
   const first = await app.pickedName();
   await page.getByRole("button", { name: /Nope Me/ }).click();
   await expect(page.locator(".t-name")).toHaveText(first === "One" ? "Two" : "One");
+});
+
+test.describe("on a Tuesday night", () => {
+  test.use({ now: new Date("2026-10-27T22:40:00+01:00") });
+
+  test("each place on the list says why it doesn’t fit, and the fixes work", async ({ app, page }) => {
+    await app.seed("lists", favorites(
+      saved("Nonna", { amenity: "restaurant", cuisine: "italian", opening_hours: "Mo-Su 12:00-22:00" }, 0.004),
+      saved("Far Away Pho", { amenity: "restaurant", cuisine: "vietnamese" }, 0.2),
+      saved("Corner Bar", { amenity: "bar" }, 0.002)
+    ));
+    await app.open();
+    await app.setLocation();
+    await fromLists(page);
+    await app.mode("Foot");
+    await app.travel(20);
+    await app.pick();
+    await expect(page.locator(".why-list li")).toHaveText([
+      /^Nonna: closed when you’d get there, opens tomorrow at (12:00|12:00 PM)$/,
+      /^Far Away Pho: about 6 hours on foot, more than your 20 min$/,
+      "Corner Bar: isn’t marked as Food"
+    ]);
+    await page.getByRole("button", { name: "Any distance" }).click();
+    await expect(page.locator(".t-name")).toHaveText("Far Away Pho");
+    await expect(page.getByLabel("Any distance, we don’t mind")).toBeChecked();
+  });
+});
+
+test("the list you look at under Lists is the one you pick from", async ({ app, page }) => {
+  await app.seed("lists", [
+    { id: "a", name: "Date night", places: [{ ...saved("Candle Bistro", { amenity: "restaurant" }), moods: ["food"] }] },
+    { id: "b", name: "Lunch", places: [{ ...saved("Desk Noodles", { amenity: "fast_food" }), moods: ["food"] }] }
+  ]);
+  await app.open("#lists");
+  await page.locator(".lists-tabs").getByRole("button", { name: /Lunch/ }).click();
+  await openPick(page);
+  await app.setLocation();
+  await fromLists(page);
+  await expect(page.locator(".list-choice").getByRole("button", { name: "Lunch" })).toHaveAttribute("aria-pressed", "true");
+  await app.pick();
+  await expect(page.locator(".t-name")).toHaveText("Desk Noodles");
 });

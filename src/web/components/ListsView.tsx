@@ -21,7 +21,8 @@ export default function ListsView({ lists, setLists, settings, update }: Props) 
   const [name, setName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const select = (id: string) => { setSelected(id); setConfirmDelete(false); setNaming(null); };
+  // The list you’re looking at is also the one the Pick screen picks from.
+  const select = (id: string) => { setSelected(id); setConfirmDelete(false); setNaming(null); update({ listId: id }); };
   const saveName = () => {
     if (naming === "new") {
       const r = createList(lists, name);

@@ -13,7 +13,7 @@ export const MIN_STAY_MIN = 45;
 
 export type OpenInfo =
   | { state: "unknown" }
-  | { state: "closed" }
+  | { state: "closed"; /** When it opens next, if known. */ opens?: Date | null; /** Open, but closing within MIN_STAY_MIN of arrival. */ closingSoon?: boolean }
   | { state: "open"; until: Date | null; always: boolean };
 
 const parsed = new WeakMap<object, OpeningHours | null>();
@@ -39,9 +39,9 @@ export function openInfo(lib: OpeningHoursLib | null, p: Place, loc: StartPoint 
   if (!oh) return { state: "unknown" };
   try {
     if (oh.getUnknown(arrival)) return { state: "unknown" };
-    if (!oh.getState(arrival)) return { state: "closed" };
+    if (!oh.getState(arrival)) return { state: "closed", opens: oh.getNextChange(arrival) || null };
     const next = oh.getNextChange(arrival) || null;
-    if (next && next.getTime() - arrival.getTime() < MIN_STAY_MIN * 60000) return { state: "closed" };
+    if (next && next.getTime() - arrival.getTime() < MIN_STAY_MIN * 60000) return { state: "closed", closingSoon: true };
     return { state: "open", until: next, always: !next && /^\s*24\/7\s*$/.test(p.tags.opening_hours || "") };
   } catch {
     return { state: "unknown" };

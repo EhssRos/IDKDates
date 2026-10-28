@@ -86,7 +86,10 @@ test("too many filters explain how to loosen them", async ({ app, page, world })
   world.places = menu();
   await app.refine("Mexican & Latin").click();
   await app.pick();
-  await expect(page.locator("#result")).toContainText("Loosen a filter");
+  await expect(page.locator(".why-list li")).toHaveText(["4 don’t match your filters"]);
+  await page.getByRole("button", { name: "Clear the filters" }).click();
+  await expect(page.locator(".t-name")).toBeVisible();
+  await expect(app.refine("Anything")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("filters are remembered", async ({ app, page }) => {

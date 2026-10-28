@@ -34,17 +34,43 @@ export interface PickContext {
   hoursLib: OpeningHoursLib | null;
 }
 
-/** Whether a place may be picked right now. */
-export function eligible(p: Place, c: PickContext): boolean {
+/** Why a place was left out of a pick. */
+export type LeftOut =
+  | { why: "noStart" }
+  | { why: "turnedDown" }
+  | { why: "visited" }
+  | { why: "chain" }
+  | { why: "filters" }
+  | { why: "mood" }
+  | { why: "tooFar"; minutes: number }
+  | { why: "closed"; opens: Date | null; closingSoon: boolean };
+
+/** Why a place can’t be picked right now, or null if it can. */
+export function leftOut(p: Place, c: PickContext): LeftOut | null {
   const s = c.settings;
-  if (!s.loc) return false;
-  if (c.rejected.has(p.id)) return false;
-  if (s.skipBeen && c.visited.has(p.id)) return false;
-  if (s.skipChains && (p.tags.brand || p.tags["brand:wikidata"])) return false;
-  if (!refineOk(p, s.refine)) return false;
-  if (minutesTo(p, s) > s.time) return false;
-  if (s.skipClosed && openInfo(c.hoursLib, p, s.loc, arrivalAt(p, s, c.now)).state === "closed") return false;
-  return true;
+  if (!s.loc) return { why: "noStart" };
+  if (c.rejected.has(p.id)) return { why: "turnedDown" };
+  if (s.skipBeen && c.visited.has(p.id)) return { why: "visited" };
+  if (s.skipChains && (p.tags.brand || p.tags["brand:wikidata"])) return { why: "chain" };
+  if (!refineOk(p, s.refine)) return { why: "filters" };
+  const minutes = minutesTo(p, s);
+  if (minutes > s.time) return { why: "tooFar", minutes };
+  if (s.skipClosed) {
+    const info = openInfo(c.hoursLib, p, s.loc, arrivalAt(p, s, c.now));
+    if (info.state === "closed") return { why: "closed", opens: info.opens ?? null, closingSoon: !!info.closingSoon };
+  }
+  return null;
+}
+
+/** Whether a place may be picked right now. */
+export const eligible = (p: Place, c: PickContext): boolean => leftOut(p, c) === null;
+
+/** How many places were left out for each reason. */
+export type LeftOutCounts = Partial<Record<LeftOut["why"], number>>;
+export function countLeftOut(reasons: (LeftOut | null)[]): LeftOutCounts {
+  const out: LeftOutCounts = {};
+  for (const r of reasons) if (r) out[r.why] = (out[r.why] ?? 0) + 1;
+  return out;
 }
 
 export function shuffle<T>(a: T[], rng: () => number = Math.random): T[] {

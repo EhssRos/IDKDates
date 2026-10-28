@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { address, factsSentence, hoursText, kindOf, trimText } from "../../core/describe";
+import { leftOutSummary, leftOutText, suggestFixes } from "../../core/explain";
 import { isNarrowed } from "../../core/filters";
 import { openInfo, openLine } from "../../core/hours";
 import { arrivalAt } from "../../core/picker";
 import { distKm, fmtKm, MODES, travelMin } from "../../core/travel";
-import type { Partner, PlaceList } from "../../core/types";
+import type { Partner, PlaceList, Settings } from "../../core/types";
 import { backstory, type Backstory } from "../../data/wiki";
 import { isApple, lang, prefersReducedMotion } from "../platform";
 import type { usePicker } from "../usePicker";
@@ -18,9 +19,11 @@ interface ResultProps {
   onAccept: () => void;
   lists: PlaceList[];
   setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
+  /** Loosen a setting and pick again right away. */
+  onFix: (patch: Partial<Settings>) => void;
 }
 
-export function Result({ picker, names, onAccept, lists, setLists }: ResultProps) {
+export function Result({ picker, names, onAccept, lists, setLists, onFix }: ResultProps) {
   const s = picker.state;
   if (s.kind === "idle") return null;
   if (s.kind === "loading") return (
@@ -46,25 +49,51 @@ export function Result({ picker, names, onAccept, lists, setLists }: ResultProps
       )}
     </div>
   );
-  if (s.kind === "empty" && s.fromList) {
-    const msg = s.turnedDown ? "You’ve turned down everything on the list that fits."
-      : s.listEmpty ? "There’s nothing on it yet. Add places under Lists."
-      : `Nothing on “${s.fromList}” fits right now. Try another mood, fewer filters${s.settings.anyDistance ? "" : ", “Any distance”"}, or pick somewhere new.`;
-    return (
-      <div className="state">
-        <p className="big">{s.turnedDown ? "That was the last option" : "Nothing on your list fits"}</p>
-        <p>{msg}{s.settings.skipClosed && !s.listEmpty ? " Places that are closed when you’d arrive are left out." : ""}</p>
+  if (s.kind === "empty") {
+    const fixes = s.turnedDown ? [] : suggestFixes(s.counts, s.settings);
+    const fixButtons = fixes.length > 0 && (
+      <div className="fixes">
+        <p>Try one of these:</p>
+        <div className="chips">{fixes.map(f => <button key={f.label} type="button" className="chip" onClick={() => onFix(f.patch)}>{f.label}</button>)}</div>
       </div>
     );
-  }
-  if (s.kind === "empty") {
+    if (s.fromList) {
+      if (s.listEmpty) return <div className="state"><p className="big">Your list is empty</p><p>Add places to “{s.fromList}” under Lists.</p></div>;
+      const now = new Date();
+      return (
+        <div className="state">
+          <p className="big">{s.turnedDown ? "That was the last option" : "Nothing on your list fits"}</p>
+          <p>{s.turnedDown ? "You’ve turned down everything on the list that fits." : `Here’s why, for each place on “${s.fromList}”:`}</p>
+          {!s.turnedDown && s.details && (
+            <ul className="why-list">
+              {s.details.slice(0, 12).map((d, i) => <li key={i}><strong>{d.name}</strong>: {leftOutText(d.reason, s.settings, now)}</li>)}
+              {s.details.length > 12 && <li>and {s.details.length - 12} more</li>}
+            </ul>
+          )}
+          {fixButtons}
+        </div>
+      );
+    }
+    if (s.found && !s.turnedDown) return (
+      <div className="state">
+        <p className="big">Nothing fits right now</p>
+        <p>We found {s.found} place{s.found === 1 ? "" : "s"} for that mood nearby, but:</p>
+        <ul className="why-list">{leftOutSummary(s.counts, s.settings).map(l => <li key={l}>{l}</li>)}</ul>
+        {fixButtons}
+      </div>
+    );
     const msg = s.turnedDown ? "You’ve turned down everything that fits. Widen the trip or add another mood."
       : isNarrowed(s.settings.moods, s.settings.refine) ? "Nothing matches those picks within reach. Loosen a filter, add a mood, or go a bit further."
       : "Nothing matches that mood within reach. Try a longer trip, another way of getting there, or another mood.";
     return (
       <div className="state">
         <p className="big">{s.turnedDown ? "That was the last option" : "Nothing in reach"}</p>
-        <p>{msg}{s.settings.skipClosed ? " Places that are closed when you’d arrive are left out." : ""}</p>
+        <p>{msg}</p>
+        {!s.turnedDown && s.settings.time < 90 && (
+          <div className="fixes"><div className="chips">
+            <button type="button" className="chip" onClick={() => onFix({ time: Math.min(90, s.settings.time + 15) })}>Go up to {Math.min(90, s.settings.time + 15)} min</button>
+          </div></div>
+        )}
       </div>
     );
   }
