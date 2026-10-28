@@ -34,7 +34,7 @@ export function Result({ picker, names, onAccept, lists, setLists, onFix }: Resu
       <p className="big">Eeny, meeny, miny…</p>
       <p>{s.settings.source === "list" ? "Going through your list." : `Checking what’s within ${s.settings.time} min ${MODES[s.settings.mode].verb}.`}</p>
       {s.slow && <>
-        <p className="slow-note">The free map servers are slow right now. Still trying…</p>
+        <p className="slow-note">The free map servers are slow right now. Still trying, and we’ll try another way if they don’t answer.</p>
         <p><button className="btn-link" type="button" onClick={picker.stop}>Stop</button></p>
       </>}
     </div>
@@ -118,7 +118,7 @@ export function Result({ picker, names, onAccept, lists, setLists, onFix }: Resu
           <p className="verdict">
             {noVetoes && s.settings.vetoCount > 0 ? "No vetoes left. It’s decided."
               : s.fromList ? `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} on “${s.fromList}” that fit${s.pool === 1 ? "s" : ""}.`
-              : `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} in reach.`}
+              : `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} in reach.${s.viaSearch ? " The map servers were busy, so this came from a smaller selection." : ""}`}
           </p>
         </>}
       </div>

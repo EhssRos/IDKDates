@@ -33,6 +33,8 @@ class FakeWorld {
     this.slow = null;          // { match: RegExp, ms } to delay matching map queries
     this.hangHosts = [];       // map servers that never answer
     this.placeSearch = [];     // results of searching a place by name (Lists screen)
+    this.nearby = null;        // fallback place-type search: q => rows, or null to fail like a busy server
+    this.nearbySearches = [];  // which place types the fallback asked for
     this.placeSearches = [];   // what was searched
   }
 }
@@ -42,7 +44,12 @@ async function installFakes(page, world) {
     const url = route.request().url();
     if (url.includes("tile.openstreetmap.org")) return route.fulfill({ contentType: "image/png", body: PNG_1PX });
     if (url.includes("nominatim.openstreetmap.org/search")) {
-      if (url.includes("extratags=1")) { world.placeSearches.push(new URL(url).searchParams.get("q")); return route.fulfill({ json: world.placeSearch }); }
+      const q = new URL(url).searchParams.get("q") || "";
+      if (q.startsWith("[")) {
+        world.nearbySearches.push(q);
+        return world.nearby ? route.fulfill({ json: world.nearby(q) }) : route.fulfill({ status: 503, body: "" });
+      }
+      if (url.includes("extratags=1")) { world.placeSearches.push(q); return route.fulfill({ json: world.placeSearch }); }
       return route.fulfill({ json: world.geocode });
     }
     if (url.includes("nominatim.openstreetmap.org/reverse")) return route.fulfill({ json: world.reverse });

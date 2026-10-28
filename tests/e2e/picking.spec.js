@@ -218,7 +218,7 @@ test.describe("picking", () => {
     world.places = [place({ amenity: "restaurant", name: "Second Server Bistro" })];
     world.hangHosts = ["overpass-api.de"];
     await page.getByRole("button", { name: "Pick for us" }).click();
-    await expect(page.locator(".t-name")).toHaveText("Second Server Bistro", { timeout: 8000 });
+    await expect(page.locator(".t-name")).toHaveText("Second Server Bistro", { timeout: 12000 });
   });
 
   test("when every map server is slow, it says so and you can stop", async ({ page, world }) => {
@@ -234,6 +234,18 @@ test.describe("picking", () => {
     world.mapFailures = 3;
     await app.pick();
     await page.locator("summary", { hasText: "What happened" }).click();
-    await expect(page.locator(".why li")).toHaveText([/overpass-api\.de: overloaded \(504\)/, /overpass\.private\.coffee: overloaded/, /maps\.mail\.ru: overloaded/]);
+    await expect(page.locator(".why li")).toHaveText([/overpass-api\.de: overloaded \(504\)/, /overpass\.private\.coffee: overloaded/, /maps\.mail\.ru: overloaded/, "nominatim.openstreetmap.org: error 503"]);
+  });
+
+  test("when every map server is down, the address search fills in", async ({ app, page, world }) => {
+    world.mapFailures = 3;
+    world.nearby = q => q === "[amenity=restaurant]"
+      ? [{ osm_type: "node", osm_id: 77, lat: "52.522", lon: "13.405", name: "Backup Trattoria", category: "amenity", type: "restaurant", extratags: { cuisine: "italian" } }]
+      : [];
+    await app.pick();
+    await expect(page.locator(".t-name")).toHaveText("Backup Trattoria");
+    await expect(app.ticket()).toContainText("Italian restaurant");
+    await expect(page.locator(".verdict")).toContainText("The map servers were busy, so this came from a smaller selection.");
+    expect(world.nearbySearches).toContain("[amenity=restaurant]");
   });
 });

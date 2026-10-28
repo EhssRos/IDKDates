@@ -14,7 +14,7 @@ export interface Round { vetoes: Record<Partner, number>; rejected: Set<string>;
 export type PickState =
   | { kind: "idle" }
   | { kind: "loading"; settings: Settings; slow: boolean }
-  | { kind: "ticket"; place: Place; pool: number; settings: Settings; hoursLib: OpeningHoursLib | null; fromList?: string }
+  | { kind: "ticket"; place: Place; pool: number; settings: Settings; hoursLib: OpeningHoursLib | null; fromList?: string; viaSearch?: boolean }
   | { kind: "empty"; settings: Settings; turnedDown: boolean; fromList?: string; listEmpty?: boolean; found: number; counts: LeftOutCounts; details?: { name: string; reason: LeftOut }[] }
   | { kind: "error"; reasons: string[] };
 
@@ -73,13 +73,13 @@ export function usePicker(settings: Settings, visits: Visit[], lists: PlaceList[
       const ctx = { settings: s, visited, rejected: r.rejected, now: new Date(), hoursLib };
       const reasons: (LeftOut | null)[] = [];
       for (const mood of shuffle(s.moods)) {
-        const places = await fetchPlaces(mood, s.refine, s.loc!, radiusM(s.time, s.mode), { signal: ctl.signal, cache: placeCache });
+        const { places, via } = await fetchPlaces(mood, s.refine, s.loc!, radiusM(s.time, s.mode), { signal: ctl.signal, cache: placeCache });
         if (ctl.signal.aborted) return;
         const checked = places.map(p => ({ p, reason: leftOut(p, ctx) }));
         const options = checked.filter(c => !c.reason).map(c => c.p);
         if (options.length) {
           r.count++;
-          setState({ kind: "ticket", place: weightedPick(options), pool: options.length, settings: s, hoursLib });
+          setState({ kind: "ticket", place: weightedPick(options), pool: options.length, settings: s, hoursLib, viaSearch: via === "search" });
           return;
         }
         reasons.push(...checked.map(c => c.reason));

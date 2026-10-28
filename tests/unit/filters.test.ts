@@ -31,9 +31,9 @@ describe("filters", () => {
   it("narrow the map query itself", () => {
     const at = { lat: 52.5, lon: 13.4 };
     const plain = buildQuery("food", {}, at, 1234);
-    expect(plain).toContain('nwr["amenity"~"^(restaurant|fast_food|ice_cream)$"]["name"]');
+    expect(plain).toContain('nw["amenity"~"^(restaurant|fast_food|ice_cream)$"]["name"]');
     expect(plain).toContain("(around:1234,52.5,13.4)");
-    expect(plain).toContain('["access"!~"^(private|no|customers)$"]');
+    expect(plain).toContain("[bbox:");
     const refined = buildQuery("food", { food: ["asian", "veggie"] }, at, 1234);
     expect(refined).not.toContain("ice_cream)$");
     expect(refined).toMatch(/\["cuisine"~"[^"]*thai[^"]*",i\]/);

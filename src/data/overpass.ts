@@ -2,6 +2,7 @@ import { selectorsFor } from "../core/filters";
 import type { LatLon, MoodId, Place, Refinements } from "../core/types";
 import { fetchWithTimeout, HttpError, isAbort } from "./http";
 import type { PlaceCache } from "./placeCache";
+import { searchNearby } from "./nearby";
 
 /**
  * Public Overpass (OpenStreetMap) servers with worldwide data. They are free, shared and
@@ -22,18 +23,34 @@ export interface QueryTiming {
   /** Give up altogether after this long. */
   deadlineMs: number;
 }
-export const DEFAULT_TIMING: QueryTiming = { hedgeAfterMs: 4000, perServerMs: 15000, deadlineMs: 25000 };
+// Busy servers often need 10 to 20 seconds. Wait for them, ask a second one after a while,
+// and leave enough time for the fallback (see fetchPlaces) within about half a minute.
+export const DEFAULT_TIMING: QueryTiming = { hedgeAfterMs: 7000, perServerMs: 20000, deadlineMs: 20000 };
 
 /** No map server could answer. `reasons` says what each one did, for the details shown to people. */
 export class MapUnavailableError extends Error {
   constructor(public reasons: string[]) { super("No map server answered: " + reasons.join("; ")); this.name = "MapUnavailableError"; }
 }
 
-export function buildQuery(mood: MoodId, refine: Refinements, at: LatLon, radiusM: number): string {
-  const filters = '["name"]["access"!~"^(private|no|customers)$"]';
-  const parts = selectorsFor(mood, refine).map(s => `nwr${s}${filters}(around:${radiusM},${at.lat},${at.lon});`).join("");
-  return `[out:json][timeout:20];(${parts});out center tags 1000;`;
+/** The box around a point that contains a circle of `radiusM` meters. */
+export function boxAround(at: LatLon, radiusM: number) {
+  const dLat = radiusM / 111320, dLon = radiusM / (111320 * Math.cos(at.lat * Math.PI / 180));
+  const r = (n: number) => +n.toFixed(5);
+  return { s: r(at.lat - dLat), w: r(at.lon - dLon), n: r(at.lat + dLat), e: r(at.lon + dLon) };
 }
+
+/**
+ * The map query. The [bbox] setting lets the server narrow down by area first, which is far
+ * cheaper than matching tags worldwide; relations are skipped (almost never venues) and the
+ * access check happens on the device, so busy servers have less work to do.
+ */
+export function buildQuery(mood: MoodId, refine: Refinements, at: LatLon, radiusM: number): string {
+  const b = boxAround(at, radiusM);
+  const parts = selectorsFor(mood, refine).map(s => `nw${s}["name"](around:${radiusM},${at.lat},${at.lon});`).join("");
+  return `[out:json][timeout:25][bbox:${b.s},${b.w},${b.n},${b.e}];(${parts});out center tags 500;`;
+}
+
+const PRIVATE = /^(private|no|customers)$/;
 
 interface OsmElement { type: string; id: number; lat?: number; lon?: number; center?: LatLon; tags?: Record<string, string> }
 interface OsmAnswer { elements?: OsmElement[]; remark?: string }
@@ -44,7 +61,7 @@ export function parseElements(elements: OsmElement[], mood: MoodId): Place[] {
   for (const el of elements) {
     const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
     const name = el.tags?.name;
-    if (lat == null || lon == null || !name || seen.has(name)) continue;
+    if (lat == null || lon == null || !name || seen.has(name) || PRIVATE.test(el.tags?.access || "")) continue;
     seen.add(name);
     out.push({ id: `${el.type}/${el.id}`, name, lat, lon, tags: el.tags!, mood });
   }
@@ -117,16 +134,41 @@ export function runQuery(q: string, opts: { signal?: AbortSignal; endpoints?: st
   });
 }
 
-/** Places for one mood around a point, from the cache when fresh. */
+export interface FetchResult {
+  places: Place[];
+  /** "map" for the full map data; "search" when the map servers were busy and the address search filled in. */
+  via: "map" | "search";
+}
+
+/**
+ * Places for one mood around a point, from the cache when fresh. If every map server fails,
+ * falls back to OpenStreetMap’s address search, which knows fewer places but answers reliably.
+ */
 export async function fetchPlaces(
   mood: MoodId, refine: Refinements, at: LatLon, radiusM: number,
-  opts: { signal?: AbortSignal; cache?: PlaceCache | null; endpoints?: string[]; timing?: Partial<QueryTiming> } = {}
-): Promise<Place[]> {
-  const q = buildQuery(mood, refine, { lat: +at.lat.toFixed(4), lon: +at.lon.toFixed(4) }, radiusM);
+  opts: { signal?: AbortSignal; cache?: PlaceCache | null; endpoints?: string[]; timing?: Partial<QueryTiming>; fallback?: boolean; searchSpacingMs?: number } = {}
+): Promise<FetchResult> {
+  const center = { lat: +at.lat.toFixed(4), lon: +at.lon.toFixed(4) };
+  const q = buildQuery(mood, refine, center, radiusM);
   const hit = opts.cache?.get(q);
-  if (hit) return hit;
-  const data = await runQuery(q, opts);
-  const places = parseElements(data.elements || [], mood);
-  opts.cache?.set(q, places);
-  return places;
+  if (hit) return { places: hit, via: "map" };
+  try {
+    const data = await runQuery(q, opts);
+    const places = parseElements(data.elements || [], mood);
+    opts.cache?.set(q, places);
+    return { places, via: "map" };
+  } catch (e) {
+    if (!(e instanceof MapUnavailableError) || opts.fallback === false || opts.signal?.aborted) throw e;
+    const key = `search:${mood}:${center.lat},${center.lon}:${radiusM}`;
+    const cached = opts.cache?.get(key);
+    if (cached) return { places: cached, via: "search" };
+    try {
+      const places = await searchNearby(mood, center, radiusM, { signal: opts.signal, spacingMs: opts.searchSpacingMs });
+      opts.cache?.set(key, places);
+      return { places, via: "search" };
+    } catch (e2) {
+      if (isAbort(e2) && opts.signal?.aborted) throw e2;
+      throw new MapUnavailableError([...e.reasons, `nominatim.openstreetmap.org: ${e2 instanceof HttpError ? `error ${e2.status}` : "unreachable"}`]);
+    }
+  }
 }
