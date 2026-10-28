@@ -2,7 +2,8 @@ import { useState } from "react";
 import { kindOf } from "../../core/describe";
 import { MOODS, MOOD_IDS, REFINE } from "../../core/moods";
 import { fmtKm, MAX_RADIUS_M, MODE_IDS, MODES, radiusKm } from "../../core/travel";
-import type { MoodId, Partner, Settings, Visit } from "../../core/types";
+import { listFor } from "../../core/lists";
+import type { MoodId, Partner, PlaceList, Settings, Visit } from "../../core/types";
 import { describePoint, searchPlace } from "../../data/geocode";
 import { lang } from "../platform";
 import { usePicker } from "../usePicker";
@@ -14,20 +15,26 @@ interface Props {
   visits: Visit[];
   setVisits: React.Dispatch<React.SetStateAction<Visit[]>>;
   names: Record<Partner, string>;
+  lists: PlaceList[];
+  setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
+  goToLists: () => void;
 }
 
-export function PickView({ settings, update, visits, setVisits, names }: Props) {
-  const picker = usePicker(settings, visits);
+export function PickView({ settings, update, visits, setVisits, names, lists, setLists, goToLists }: Props) {
+  const picker = usePicker(settings, visits, lists);
+  const fromList = settings.source === "list";
+  const list = listFor(lists, settings.listId);
   const [formMsg, setFormMsg] = useState("");
 
   const go = () => {
     setFormMsg("");
-    if (!settings.loc) {
+    if (fromList && !list.places.length) { setFormMsg(`“${list.name}” is empty. Add places to it under Lists first.`); return; }
+    if (!settings.loc && !(fromList && settings.anyDistance)) {
       setFormMsg("Set where you’re starting from first.");
       document.getElementById("locInput")?.focus();
       return;
     }
-    if (!settings.moods.length) { setFormMsg("Pick at least one mood."); return; }
+    if (!settings.moods.length && !fromList) { setFormMsg("Pick at least one mood."); return; }
     picker.start();
   };
 
@@ -36,7 +43,7 @@ export function PickView({ settings, update, visits, setVisits, names }: Props) 
     const p = picker.state.place;
     setVisits(v => [{
       visit: `v${Date.now()}`, placeId: p.id, name: p.name, kind: kindOf(p.tags), mood: p.mood, lat: p.lat, lon: p.lon,
-      date: Date.now(), loved: false, ratings: { a: 0, b: 0 }, note: ""
+      date: Date.now(), loved: false, ratings: { a: 0, b: 0 }, note: "", tags: p.tags
     }, ...v].slice(0, 500));
     picker.markDone();
   };
@@ -44,6 +51,31 @@ export function PickView({ settings, update, visits, setVisits, names }: Props) 
   return (
     <>
       <StartingPoint settings={settings} update={update} />
+
+      <section className="step" aria-labelledby="h-source">
+        <h2 id="h-source">Pick from</h2>
+        <div className="seg seg-2" id="source" role="group" aria-labelledby="h-source">
+          <button type="button" aria-pressed={!fromList} onClick={() => update({ source: "map" })}>Somewhere new</button>
+          <button type="button" aria-pressed={fromList} onClick={() => update({ source: "list" })}>Our lists</button>
+        </div>
+        {fromList && (
+          <>
+            {lists.length > 1 && (
+              <div className="chips list-choice" role="group" aria-label="Which list">
+                {lists.map(l => (
+                  <button key={l.id} type="button" className="chip" aria-pressed={l.id === list.id} onClick={() => update({ listId: l.id })}>{l.name}</button>
+                ))}
+              </div>
+            )}
+            <p className="hint" id="sourceHint">
+              {list.places.length
+                ? `${list.places.length} place${list.places.length === 1 ? "" : "s"} on “${list.name}”. We pick one that fits your choices below.${settings.moods.length ? "" : " No mood picked, so anything on the list goes."}`
+                : <>“{list.name}” is empty. <button type="button" className="btn-link inline" onClick={goToLists}>Add places</button></>}
+            </p>
+          </>
+        )}
+      </section>
+
       <MoodPicker settings={settings} update={update} />
 
       <section className="step" aria-labelledby="h-mode">
@@ -58,18 +90,25 @@ export function PickView({ settings, update, visits, setVisits, names }: Props) 
       <section className="step" aria-labelledby="h-time">
         <div className="range-row">
           <h2 id="h-time" style={{ margin: 0 }}>Willing to travel</h2>
-          <output id="timeOut" htmlFor="time">{settings.time} min</output>
+          <output id="timeOut" htmlFor="time">{fromList && settings.anyDistance ? "Any distance" : `${settings.time} min`}</output>
         </div>
         <input id="time" type="range" min={5} max={90} step={5} value={settings.time} aria-labelledby="h-time"
-          onChange={e => update({ time: +e.target.value })} />
-        <p className="hint" id="radiusHint">
-          Roughly {fmtKm(Math.min(MAX_RADIUS_M / 1000, radiusKm(settings.time, settings.mode)))} {MODES[settings.mode].verb}, as the crow flies.
-        </p>
+          disabled={fromList && settings.anyDistance} onChange={e => update({ time: +e.target.value })} />
+        {fromList && (
+          <Toggle id="anyDistance" label="Any distance, we don’t mind" checked={settings.anyDistance} onChange={v => update({ anyDistance: v })} />
+        )}
+        {!(fromList && settings.anyDistance) && (
+          <p className="hint" id="radiusHint">
+            Roughly {fmtKm(Math.min(MAX_RADIUS_M / 1000, radiusKm(settings.time, settings.mode)))} {MODES[settings.mode].verb}, as the crow flies.
+          </p>
+        )}
       </section>
 
       <section className="step toggles" aria-label="Options">
-        <Toggle id="skipChains" label="Skip big chains" checked={settings.skipChains} onChange={v => update({ skipChains: v })} />
-        <Toggle id="skipBeen" label="Skip places we’ve already been" checked={settings.skipBeen} onChange={v => update({ skipBeen: v })} />
+        {!fromList && <>
+          <Toggle id="skipChains" label="Skip big chains" checked={settings.skipChains} onChange={v => update({ skipChains: v })} />
+          <Toggle id="skipBeen" label="Skip places we’ve already been" checked={settings.skipBeen} onChange={v => update({ skipBeen: v })} />
+        </>}
         <Toggle id="skipClosed" label="Skip places that are closed when we’d arrive" checked={settings.skipClosed} onChange={v => update({ skipClosed: v })} />
       </section>
 
@@ -90,7 +129,7 @@ export function PickView({ settings, update, visits, setVisits, names }: Props) 
       <p className="form-msg" id="formMsg" role="alert">{formMsg}</p>
 
       <div id="result" aria-live="polite">
-        <Result picker={picker} names={names} onAccept={accept} />
+        <Result picker={picker} names={names} onAccept={accept} lists={lists} setLists={setLists} />
       </div>
     </>
   );
@@ -166,7 +205,9 @@ function MoodPicker({ settings, update }: Pick<Props, "settings" | "update">) {
           <button key={m} type="button" className="chip" aria-pressed={settings.moods.includes(m)} onClick={() => toggleMood(m)}>{MOODS[m].label}</button>
         ))}
       </div>
-      <p className="hint">Pick one or more. If you pick several, we choose between them too.</p>
+      <p className="hint">{settings.source === "list"
+        ? "Optional when picking from a list. Pick one or more to narrow it down."
+        : "Pick one or more. If you pick several, we choose between them too."}</p>
       <div id="refine">
         {settings.moods.map(m => {
           const r = REFINE[m], chosen = settings.refine[m] || [];

@@ -29,8 +29,9 @@ Once online, the app can be added to a phone’s home screen and opens like an a
 
 ```
 src/
-  core/      The rules of the app: moods and filters, travel time, picking, opening hours,
-             descriptions, the timeline, saved data. Plain TypeScript, no browser.
+  core/      The rules of the app: moods and filters, travel time, picking (from the map or
+             from your own lists), opening hours, descriptions, the timeline, saved data.
+             Plain TypeScript, no browser.
   data/      Everything that talks to the internet: OpenStreetMap (places and addresses),
              Wikipedia, the opening hours engine, and a cache for map results.
   web/       The web app: React components, styles and browser-only glue.
@@ -67,4 +68,4 @@ The tests never touch the real internet. Every outside service is faked in `test
 
 ## Saved data
 
-Settings, the timeline and recent map results are stored on the device under keys starting with `idkdates:v1:`. `core/storage.ts` migrates older data on start, including data saved while the app was called Eeny, and repairs damaged values instead of failing.
+Settings, your lists, the timeline and recent map results are stored on the device under keys starting with `idkdates:v1:`. `core/storage.ts` migrates older data on start, including data saved while the app was called Eeny, and repairs damaged values instead of failing.

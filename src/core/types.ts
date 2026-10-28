@@ -36,6 +36,12 @@ export interface Settings {
   nameB: string;
   vetoCount: number;
   loc: StartPoint | null;
+  /** Pick somewhere new from the map, or from one of your own lists. */
+  source: "map" | "list";
+  /** Which list to pick from; null means the first one. */
+  listId: string | null;
+  /** When picking from a list: ignore travel time. */
+  anyDistance: boolean;
 }
 
 export interface Visit {
@@ -52,6 +58,24 @@ export interface Visit {
   loved: boolean;
   ratings: { a: number; b: number };
   note: string;
+  /** Map details of the place, kept so it can be saved to a list later. */
+  tags?: Tags;
+}
+
+/** A place someone saved to one of their lists. */
+export interface SavedPlace extends LatLon {
+  id: string;
+  name: string;
+  tags: Tags;
+  /** Which moods it fits. Detected from the map data, and editable. */
+  moods: MoodId[];
+  added: number;
+}
+
+export interface PlaceList {
+  id: string;
+  name: string;
+  places: SavedPlace[];
 }
 
 export type Partner = "a" | "b";

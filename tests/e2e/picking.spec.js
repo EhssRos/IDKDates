@@ -213,4 +213,27 @@ test.describe("picking", () => {
     await expect(page.locator(".t-name")).toHaveText("Cached Café");
     expect(world.queries).toHaveLength(1);
   });
+
+  test("a map server that never answers doesn’t stall the pick", async ({ app, page, world }) => {
+    world.places = [place({ amenity: "restaurant", name: "Second Server Bistro" })];
+    world.hangHosts = ["overpass-api.de"];
+    await page.getByRole("button", { name: "Pick for us" }).click();
+    await expect(page.locator(".t-name")).toHaveText("Second Server Bistro", { timeout: 8000 });
+  });
+
+  test("when every map server is slow, it says so and you can stop", async ({ page, world }) => {
+    world.hangHosts = ["overpass-api.de", "overpass.private.coffee", "maps.mail.ru"];
+    await page.getByRole("button", { name: "Pick for us" }).click();
+    await expect(page.locator("#result")).toContainText("The free map servers are slow right now", { timeout: 9000 });
+    await page.getByRole("button", { name: "Stop" }).click();
+    await expect(page.locator("#result")).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Pick for us" })).toBeEnabled();
+  });
+
+  test("a failed pick explains what each server did", async ({ app, page, world }) => {
+    world.mapFailures = 3;
+    await app.pick();
+    await page.locator("summary", { hasText: "What happened" }).click();
+    await expect(page.locator(".why li")).toHaveText([/overpass-api\.de: overloaded \(504\)/, /overpass\.private\.coffee: overloaded/, /maps\.mail\.ru: overloaded/]);
+  });
 });

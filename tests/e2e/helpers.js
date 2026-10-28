@@ -9,6 +9,11 @@ export const HOME = { lat: 52.52, lon: 13.405, name: "Mitte, Berlin, Germany", c
 
 // About 1 km north of HOME per 0.009 degrees of latitude.
 let nextId = 1;
+/** A place search result as the address search returns it. */
+export function searchHit(name, category, type, extratags = {}, { north = 0.002, osmId = Math.floor(Math.random() * 1e8) } = {}) {
+  return { osm_type: "node", osm_id: osmId, lat: String(HOME.lat + north), lon: String(HOME.lon), name, display_name: `${name}, Street 1, Mitte, Berlin`, category, type, extratags };
+}
+
 export function place(tags, { north = 0.002, east = 0, type = "node" } = {}) {
   const id = nextId++;
   const pos = { lat: HOME.lat + north, lon: HOME.lon + east };
@@ -26,6 +31,9 @@ class FakeWorld {
     this.wiki = {};            // wikidata id -> { title, extract }
     this.blockHoursEngine = false;
     this.slow = null;          // { match: RegExp, ms } to delay matching map queries
+    this.hangHosts = [];       // map servers that never answer
+    this.placeSearch = [];     // results of searching a place by name (Lists screen)
+    this.placeSearches = [];   // what was searched
   }
 }
 
@@ -33,10 +41,14 @@ async function installFakes(page, world) {
   await page.route(url => !url.host.startsWith("localhost"), async route => {
     const url = route.request().url();
     if (url.includes("tile.openstreetmap.org")) return route.fulfill({ contentType: "image/png", body: PNG_1PX });
-    if (url.includes("nominatim.openstreetmap.org/search")) return route.fulfill({ json: world.geocode });
+    if (url.includes("nominatim.openstreetmap.org/search")) {
+      if (url.includes("extratags=1")) { world.placeSearches.push(new URL(url).searchParams.get("q")); return route.fulfill({ json: world.placeSearch }); }
+      return route.fulfill({ json: world.geocode });
+    }
     if (url.includes("nominatim.openstreetmap.org/reverse")) return route.fulfill({ json: world.reverse });
     if (url.includes("/api/interpreter")) {
       world.mapEndpoints.push(new URL(url).host);
+      if (world.hangHosts.includes(new URL(url).host)) return; // never answer
       const q = decodeURIComponent((route.request().postData() || "").replace(/^data=/, ""));
       world.queries.push(q);
       if (world.slow && world.slow.match.test(q)) await new Promise(r => setTimeout(r, world.slow.ms));

@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { trimText } from "../../core/describe";
 import { avgRating, filterVisits, groupByMonth, TIMELINE_FILTERS, timelineSummary, type TimelineFilter } from "../../core/timeline";
-import type { Partner, Visit } from "../../core/types";
+import type { MoodId, Partner, PlaceList, Visit } from "../../core/types";
+import { SaveToList } from "./SaveToList";
 
 const MapView = lazy(() => import("./MapView"));
 
@@ -9,9 +10,11 @@ interface Props {
   visits: Visit[];
   setVisits: React.Dispatch<React.SetStateAction<Visit[]>>;
   names: Record<Partner, string>;
+  lists: PlaceList[];
+  setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
 }
 
-export default function TimelineView({ visits, setVisits, names }: Props) {
+export default function TimelineView({ visits, setVisits, names, lists, setLists }: Props) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -58,7 +61,7 @@ export default function TimelineView({ visits, setVisits, names }: Props) {
             <h3 className="tl-month">{g.month}</h3>
             <ol className="tl-list">
               {g.visits.map(v => (
-                <Entry key={v.visit} v={v} names={names} open={open === v.visit} confirming={confirm === v.visit}
+                <Entry key={v.visit} v={v} names={names} open={open === v.visit} confirming={confirm === v.visit} lists={lists} setLists={setLists}
                   onToggle={() => { setOpen(open === v.visit ? null : v.visit); setConfirm(null); }}
                   onRate={(w, n) => change(v.visit, x => ({ ...x, ratings: { ...x.ratings, [w]: x.ratings[w] === n ? 0 : n } }))}
                   onNote={note => change(v.visit, x => ({ ...x, note }))}
@@ -79,10 +82,11 @@ const Dots = ({ n }: { n: number }) => (
 
 interface EntryProps {
   v: Visit; names: Record<Partner, string>; open: boolean; confirming: boolean;
+  lists: PlaceList[]; setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
   onToggle: () => void; onRate: (w: Partner, n: number) => void; onNote: (s: string) => void; onLove: () => void; onRemove: () => void;
 }
 
-function Entry({ v, names, open, confirming, onToggle, onRate, onNote, onLove, onRemove }: EntryProps) {
+function Entry({ v, names, open, confirming, lists, setLists, onToggle, onRate, onNote, onLove, onRemove }: EntryProps) {
   const avg = avgRating(v);
   const date = new Date(v.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   const bodyId = `tlb-${v.visit}`;
@@ -116,6 +120,10 @@ function Entry({ v, names, open, confirming, onToggle, onRate, onNote, onLove, o
             {v.lat != null && <a className="btn" href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`} target="_blank" rel="noopener">Go again</a>}
             <button type="button" className="btn danger" onClick={onRemove}>{confirming ? "Tap again to remove" : "Remove"}</button>
           </div>
+          {v.lat != null && v.lon != null && v.placeId && (
+            <SaveToList place={{ id: v.placeId, name: v.name, lat: v.lat, lon: v.lon, tags: v.tags ?? {} }}
+              moods={v.tags ? undefined : (v.mood ? [v.mood as MoodId] : [])} lists={lists} setLists={setLists} />
+          )}
         </div>
       </div>
     </li>

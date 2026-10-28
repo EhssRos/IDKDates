@@ -1,6 +1,7 @@
 import { MOOD_IDS } from "./moods";
 import { MODE_IDS } from "./travel";
-import type { MoodId, Settings, Visit } from "./types";
+import { normalizeList, starterLists } from "./lists";
+import type { MoodId, PlaceList, Settings, Tags, Visit } from "./types";
 
 /**
  * A synchronous key-value store. The web app uses localStorage;
@@ -19,7 +20,8 @@ export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_SETTINGS: Settings = {
   moods: ["food"], mode: "bike", time: 20, skipChains: true, skipBeen: true, skipClosed: true,
-  refine: {}, nameA: "", nameB: "", vetoCount: 1, loc: null
+  refine: {}, nameA: "", nameB: "", vetoCount: 1, loc: null,
+  source: "map", listId: null, anyDistance: false
 };
 
 const readJson = (store: KeyValueStore, key: string): unknown => {
@@ -53,6 +55,9 @@ export function loadSettings(store: KeyValueStore): Settings {
   s.vetoCount = Math.min(3, Math.max(0, Number(s.vetoCount) || 0));
   if (raw.vetoCount === undefined) s.vetoCount = DEFAULT_SETTINGS.vetoCount;
   if (!s.refine || typeof s.refine !== "object") s.refine = {};
+  if (s.source !== "list") s.source = "map";
+  if (typeof s.listId !== "string") s.listId = null;
+  s.anyDistance = !!s.anyDistance;
   return s;
 }
 
@@ -73,7 +78,8 @@ export function loadHistory(store: KeyValueStore): Visit[] {
     date: Number(h.date) || Date.now(),
     loved: !!h.loved,
     ratings: { a: Number(h.ratings?.a) || 0, b: Number(h.ratings?.b) || 0 },
-    note: typeof h.note === "string" ? h.note : ""
+    note: typeof h.note === "string" ? h.note : "",
+    ...(h.tags && typeof h.tags === "object" ? { tags: h.tags as Tags } : {})
   }));
 }
 
@@ -83,3 +89,12 @@ export const memoryStore = (): KeyValueStore => {
   const m = new Map<string, string>();
   return { get: k => m.get(k) ?? null, set: (k, v) => void m.set(k, v), remove: k => void m.delete(k) };
 };
+
+/** Your own lists of places. There is always at least one. */
+export function loadLists(store: KeyValueStore): PlaceList[] {
+  const raw = readJson(store, "lists");
+  const lists = Array.isArray(raw) ? raw.map(normalizeList).filter((l): l is PlaceList => l !== null) : [];
+  return lists.length ? lists : starterLists();
+}
+
+export const saveLists = (store: KeyValueStore, lists: PlaceList[]) => writeJson(store, "lists", lists);

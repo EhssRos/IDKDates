@@ -25,3 +25,32 @@ export async function describePoint(lat: number, lon: number, lang: string, sign
     cc: a.country_code || "", state: a.state || ""
   };
 }
+
+export interface PlaceHit {
+  place: { id: string; name: string; lat: number; lon: number; tags: Record<string, string> };
+  /** Short address for telling similar names apart. */
+  where: string;
+}
+
+interface NominatimPlace {
+  osm_type: string; osm_id: number; lat: string; lon: string; name?: string; display_name: string;
+  category?: string; type?: string; extratags?: Record<string, string> | null;
+}
+
+/**
+ * Finds places by name, preferring ones near `near`. Nominatim’s rules don’t allow
+ * search-as-you-type, so call this only when someone presses Search.
+ */
+export async function searchPlaces(q: string, lang: string, near: { lat: number; lon: number } | null, signal?: AbortSignal): Promise<PlaceHit[]> {
+  const box = near ? `&viewbox=${near.lon - 0.3},${near.lat + 0.2},${near.lon + 0.3},${near.lat - 0.2}` : "";
+  const url = `${NOMINATIM}/search?format=jsonv2&limit=8&extratags=1&addressdetails=0&accept-language=${lang}&q=${encodeURIComponent(q)}${box}`;
+  const rows = await getJson<NominatimPlace[]>(url, 15000, signal);
+  return rows.filter(r => r.name).map(r => {
+    const tags: Record<string, string> = { ...(r.extratags || {}), name: r.name! };
+    if (r.category && r.type) tags[r.category] = r.type;
+    return {
+      place: { id: `${r.osm_type}/${r.osm_id}`, name: r.name!, lat: +r.lat, lon: +r.lon, tags },
+      where: r.display_name.split(",").slice(1, 4).join(",").trim()
+    };
+  });
+}

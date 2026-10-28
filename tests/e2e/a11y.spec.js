@@ -21,6 +21,16 @@ for (const scheme of ["light", "dark"]) {
       expect(await scan(page)).toEqual([]);
     });
 
+    test("lists screen has no accessibility problems", async ({ app, page, world }) => {
+      world.placeSearch = [{ osm_type: "node", osm_id: 1, lat: "52.52", lon: "13.405", name: "Thai Corner", display_name: "Thai Corner, Mitte", category: "amenity", type: "restaurant", extratags: { cuisine: "thai" } }];
+      await app.open("#lists");
+      await page.getByLabel("Search for a place to add").fill("Thai");
+      await page.getByRole("button", { name: "Search", exact: true }).click();
+      await page.getByRole("button", { name: "Add Thai Corner" }).click();
+      await page.locator(".saved-head").click();
+      expect(await scan(page)).toEqual([]);
+    });
+
     test("timeline with an open entry has no accessibility problems", async ({ app, page }) => {
       await app.seed("history", [{ visit: "v1", placeId: "node/1", name: "Ramen Bar", kind: "Restaurant", lat: 52.52, lon: 13.405, date: Date.parse("2026-10-17T20:00:00+02:00"), loved: true, ratings: { a: 4, b: 0 }, note: "Good broth" }]);
       await app.open("#timeline");

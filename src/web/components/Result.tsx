@@ -4,14 +4,23 @@ import { isNarrowed } from "../../core/filters";
 import { openInfo, openLine } from "../../core/hours";
 import { arrivalAt } from "../../core/picker";
 import { distKm, fmtKm, MODES, travelMin } from "../../core/travel";
-import type { Partner } from "../../core/types";
+import type { Partner, PlaceList } from "../../core/types";
 import { backstory, type Backstory } from "../../data/wiki";
 import { isApple, lang, prefersReducedMotion } from "../platform";
 import type { usePicker } from "../usePicker";
+import { SaveToList } from "./SaveToList";
 
 type Picker = ReturnType<typeof usePicker>;
 
-export function Result({ picker, names, onAccept }: { picker: Picker; names: Record<Partner, string>; onAccept: () => void }) {
+interface ResultProps {
+  picker: Picker;
+  names: Record<Partner, string>;
+  onAccept: () => void;
+  lists: PlaceList[];
+  setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
+}
+
+export function Result({ picker, names, onAccept, lists, setLists }: ResultProps) {
   const s = picker.state;
   if (s.kind === "idle") return null;
   if (s.kind === "loading") return (
@@ -20,16 +29,34 @@ export function Result({ picker, names, onAccept }: { picker: Picker; names: Rec
         <circle cx="26" cy="26" r="18.5" /><circle cx="74" cy="26" r="18.5" /><circle cx="26" cy="74" r="18.5" /><circle cx="74" cy="74" r="18.5" />
       </svg>
       <p className="big">Eeny, meeny, miny…</p>
-      <p>Checking what’s within {s.settings.time} min {MODES[s.settings.mode].verb}.</p>
+      <p>{s.settings.source === "list" ? "Going through your list." : `Checking what’s within ${s.settings.time} min ${MODES[s.settings.mode].verb}.`}</p>
+      {s.slow && <>
+        <p className="slow-note">The free map servers are slow right now. Still trying…</p>
+        <p><button className="btn-link" type="button" onClick={picker.stop}>Stop</button></p>
+      </>}
     </div>
   );
   if (s.kind === "error") return (
     <div className="state">
       <p className="big">The map didn’t answer</p>
-      <p>The map data service is busy or your connection dropped. Wait a moment and try again.</p>
+      <p>The free map servers are busy or your connection dropped. Wait a moment and try again.</p>
       <p><button className="btn" type="button" onClick={picker.retry}>Try again</button></p>
+      {s.reasons.length > 0 && (
+        <details className="why"><summary>What happened</summary><ul>{s.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul></details>
+      )}
     </div>
   );
+  if (s.kind === "empty" && s.fromList) {
+    const msg = s.turnedDown ? "You’ve turned down everything on the list that fits."
+      : s.listEmpty ? "There’s nothing on it yet. Add places under Lists."
+      : `Nothing on “${s.fromList}” fits right now. Try another mood, fewer filters${s.settings.anyDistance ? "" : ", “Any distance”"}, or pick somewhere new.`;
+    return (
+      <div className="state">
+        <p className="big">{s.turnedDown ? "That was the last option" : "Nothing on your list fits"}</p>
+        <p>{msg}{s.settings.skipClosed && !s.listEmpty ? " Places that are closed when you’d arrive are left out." : ""}</p>
+      </div>
+    );
+  }
   if (s.kind === "empty") {
     const msg = s.turnedDown ? "You’ve turned down everything that fits. Widen the trip or add another mood."
       : isNarrowed(s.settings.moods, s.settings.refine) ? "Nothing matches those picks within reach. Loosen a filter, add a mood, or go a bit further."
@@ -47,6 +74,7 @@ export function Result({ picker, names, onAccept }: { picker: Picker; names: Rec
     <>
       <Ticket key={`${s.place.id}-${r.count}`} picker={picker} />
       <div className="decide">
+        {!s.fromList && <SaveToList place={s.place} lists={lists} setLists={setLists} />}
         {r.done ? <p className="verdict">Saved to your timeline. Have fun, and rate it afterwards.</p> : <>
           <button type="button" className="yes" onClick={onAccept}>We’re going</button>
           {s.settings.vetoCount > 0 && (
@@ -59,7 +87,9 @@ export function Result({ picker, names, onAccept }: { picker: Picker; names: Rec
             </div>
           )}
           <p className="verdict">
-            {noVetoes && s.settings.vetoCount > 0 ? "No vetoes left. It’s decided." : `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} in reach.`}
+            {noVetoes && s.settings.vetoCount > 0 ? "No vetoes left. It’s decided."
+              : s.fromList ? `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} on “${s.fromList}” that fit${s.pool === 1 ? "s" : ""}.`
+              : `Picked from ${s.pool} place${s.pool === 1 ? "" : "s"} in reach.`}
           </p>
         </>}
       </div>
@@ -90,11 +120,11 @@ function Ticket({ picker }: { picker: Picker }) {
     ref.current?.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
   }, []);
 
-  const km = distKm(settings.loc!, p);
-  const mins = Math.max(1, Math.round(travelMin(km, settings.mode)));
+  const km = settings.loc ? distKm(settings.loc, p) : null;
+  const mins = km == null ? null : Math.max(1, Math.round(travelMin(km, settings.mode)));
   const m = MODES[settings.mode];
   const kind = kindOf(t);
-  const arrival = arrivalAt(p, settings, new Date());
+  const arrival = settings.loc ? arrivalAt(p, settings, new Date()) : new Date();
   const open = openInfo(s.hoursLib, p, settings.loc, arrival);
   const addr = address(t);
   const hours = hoursText(t.opening_hours);
@@ -103,11 +133,13 @@ function Ticket({ picker }: { picker: Picker }) {
 
   return (
     <article className="ticket reveal" aria-label="Tonight’s pick" ref={ref}>
-      <p className="t-kind">{kind}</p>
+      <p className="t-kind">{s.fromList ? `${kind}, from ${s.fromList}` : kind}</p>
       <h2 className="t-name">{p.name}</h2>
       <dl className="t-facts" ref={factsRef}>
-        <div><dt>Getting there</dt><dd>About {mins} min {m.verb}</dd></div>
-        <div><dt>Distance</dt><dd>{fmtKm(km)} away</dd></div>
+        {km != null && mins != null && <>
+          <div><dt>Getting there</dt><dd>About {mins} min {m.verb}</dd></div>
+          <div><dt>Distance</dt><dd>{fmtKm(km)} away</dd></div>
+        </>}
         <div className="wide"><dt>Opening hours</dt><dd>{openLine(open, arrival)}</dd></div>
       </dl>
       {hasWiki && story === "loading"
