@@ -14,10 +14,16 @@ export function searchHit(name, category, type, extratags = {}, { north = 0.002,
   return { osm_type: "node", osm_id: osmId, lat: String(HOME.lat + north), lon: String(HOME.lon), name, display_name: `${name}, Street 1, Mitte, Berlin`, category, type, extratags };
 }
 
-export function place(tags, { north = 0.002, east = 0, type = "node" } = {}) {
+/**
+ * A place as the map server returns it, `north` degrees north of HOME (0.009 is about 1 km).
+ * Ways and relations get a bounding box `size` meters across, the way the server reports shapes.
+ */
+export function place(tags, { north = 0.002, east = 0, type = "node", size = 50 } = {}) {
   const id = nextId++;
   const pos = { lat: HOME.lat + north, lon: HOME.lon + east };
-  return type === "node" ? { type, id, ...pos, tags } : { type, id, center: pos, tags };
+  if (type === "node") return { type, id, ...pos, tags };
+  const dLat = size / 2 / 111320, dLon = size / 2 / (111320 * Math.cos(pos.lat * Math.PI / 180));
+  return { type, id, bounds: { minlat: pos.lat - dLat, minlon: pos.lon - dLon, maxlat: pos.lat + dLat, maxlon: pos.lon + dLon }, tags };
 }
 
 class FakeWorld {

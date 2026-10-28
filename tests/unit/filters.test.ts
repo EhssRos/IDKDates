@@ -14,6 +14,10 @@ describe("filters", () => {
     expect(thai({ cuisine: "Vietnamese;THAI" })).toBe(true);
     expect(thai({ cuisine: "thailandish" })).toBe(false);
     expect(thai({})).toBe(false);
+    const notable = chainTest('["historic"="memorial"]["wikidata"]');
+    expect([notable({ historic: "memorial", wikidata: "Q1" }), notable({ historic: "memorial" })]).toEqual([true, false]);
+    expect(chainTest('[!"water"]')({})).toBe(true);
+    expect(chainTest('[!"water"]')({ water: "pond" })).toBe(false);
     const notPrivate = chainTest('["access"!~"^(private|no)$"]');
     expect([notPrivate({}), notPrivate({ access: "private" }), notPrivate({ access: "yes" })]).toEqual([true, false, true]);
   });
@@ -31,11 +35,11 @@ describe("filters", () => {
   it("narrow the map query itself", () => {
     const at = { lat: 52.5, lon: 13.4 };
     const plain = buildQuery("food", {}, at, 1234);
-    expect(plain).toContain('nw["amenity"~"^(restaurant|fast_food|ice_cream)$"]["name"]');
+    expect(plain).toContain('nw["amenity"~"^(restaurant|fast_food|ice_cream|food_court)$"]["name"]');
     expect(plain).toContain("(around:1234,52.5,13.4)");
     expect(plain).toContain("[bbox:");
     const refined = buildQuery("food", { food: ["asian", "veggie"] }, at, 1234);
-    expect(refined).not.toContain("ice_cream)$");
+    expect(refined).not.toContain("food_court");
     expect(refined).toMatch(/\["cuisine"~"[^"]*thai[^"]*",i\]/);
     expect(refined).toContain('["diet:vegan"~"^(yes|only)$"]');
     expect(selectorsFor("food", { food: ["bogus"] })).toEqual(MOODS.food.selectors);
@@ -51,7 +55,7 @@ describe("filters", () => {
     const bad: string[] = [];
     for (const [m, r] of Object.entries(REFINE)) for (const [k, o] of Object.entries(r.options)) {
       if (!o.label || !o.q.length) bad.push(`${m}.${k}: empty`);
-      for (const c of o.q) if (!/^(\["[^"]+"(=|~|!~)"[^"]*"(,i)?\])+$/.test(c)) bad.push(`${m}.${k}: ${c}`);
+      for (const c of o.q) if (!/^(\[!?"[^"]+"((=|~|!~)"[^"]*"(,i)?)?\])+$/.test(c)) bad.push(`${m}.${k}: ${c}`);
     }
     expect(bad).toEqual([]);
   });

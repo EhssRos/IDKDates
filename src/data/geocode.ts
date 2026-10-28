@@ -1,3 +1,4 @@
+import { boxArea } from "../core/quality";
 import type { StartPoint } from "../core/types";
 import { getJson } from "./http";
 
@@ -27,14 +28,14 @@ export async function describePoint(lat: number, lon: number, lang: string, sign
 }
 
 export interface PlaceHit {
-  place: { id: string; name: string; lat: number; lon: number; tags: Record<string, string> };
+  place: { id: string; name: string; lat: number; lon: number; tags: Record<string, string>; area?: number; bounds?: { s: number; w: number; n: number; e: number } };
   /** Short address for telling similar names apart. */
   where: string;
 }
 
 interface NominatimPlace {
   osm_type: string; osm_id: number; lat: string; lon: string; name?: string; display_name: string;
-  category?: string; type?: string; extratags?: Record<string, string> | null;
+  category?: string; type?: string; extratags?: Record<string, string> | null; boundingbox?: string[];
 }
 
 /**
@@ -48,8 +49,11 @@ export async function searchPlaces(q: string, lang: string, near: { lat: number;
   return rows.filter(r => r.name).map(r => {
     const tags: Record<string, string> = { ...(r.extratags || {}), name: r.name! };
     if (r.category && r.type) tags[r.category] = r.type;
+    const bb = r.boundingbox?.map(Number);
+    const shape = bb && bb.length === 4 && r.osm_type !== "node"
+      ? { area: Math.round(boxArea(bb[0], bb[2], bb[1], bb[3])), bounds: { s: bb[0], n: bb[1], w: bb[2], e: bb[3] } } : {};
     return {
-      place: { id: `${r.osm_type}/${r.osm_id}`, name: r.name!, lat: +r.lat, lon: +r.lon, tags },
+      place: { id: `${r.osm_type}/${r.osm_id}`, name: r.name!, lat: +r.lat, lon: +r.lon, tags, ...shape },
       where: r.display_name.split(",").slice(1, 4).join(",").trim()
     };
   });

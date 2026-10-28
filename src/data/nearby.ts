@@ -1,4 +1,5 @@
 import { shuffle } from "../core/picker";
+import { boxArea } from "../core/quality";
 import type { LatLon, MoodId, Place } from "../core/types";
 import { getJson } from "./http";
 
@@ -14,8 +15,8 @@ export const SEARCH_TYPES: Record<MoodId, string[]> = {
   drinks: ["amenity=cafe", "amenity=bar", "amenity=pub", "amenity=biergarten"],
   clubs: ["amenity=nightclub", "amenity=music_venue"],
   action: ["leisure=bowling_alley", "amenity=cinema", "leisure=escape_game", "leisure=miniature_golf", "leisure=amusement_arcade", "leisure=trampoline_park", "leisure=ice_rink"],
-  nature: ["leisure=park", "leisure=nature_reserve", "tourism=viewpoint", "natural=beach", "natural=water"],
-  culture: ["tourism=museum", "tourism=gallery", "amenity=theatre", "amenity=arts_centre", "tourism=zoo", "historic=castle"]
+  nature: ["leisure=park", "natural=water", "landuse=forest", "leisure=nature_reserve", "tourism=viewpoint", "natural=beach"],
+  culture: ["tourism=museum", "tourism=gallery", "amenity=theatre", "historic=castle", "historic=monument", "historic=ruins", "tourism=attraction", "tourism=zoo"]
 };
 /** At most this many requests per pick, so the fallback stays quick. */
 const MAX_TYPES = 4;
@@ -29,7 +30,7 @@ const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener("abort", () => { clearTimeout(t); reject(Object.assign(new Error("Cancelled"), { name: "AbortError" })); }, { once: true });
 });
 
-interface Row { osm_type: string; osm_id: number; lat: string; lon: string; name?: string; category?: string; type?: string; extratags?: Record<string, string> | null }
+interface Row { osm_type: string; osm_id: number; lat: string; lon: string; name?: string; category?: string; type?: string; extratags?: Record<string, string> | null; boundingbox?: string[] }
 
 export async function searchNearby(mood: MoodId, at: LatLon, radiusM: number, opts: { signal?: AbortSignal; spacingMs?: number } = {}): Promise<Place[]> {
   const spacing = opts.spacingMs ?? 1100;
@@ -54,7 +55,14 @@ export async function searchNearby(mood: MoodId, at: LatLon, radiusM: number, op
         seen.add(id);
         const tags: Record<string, string> = { ...(row.extratags || {}), name: row.name };
         if (row.category && row.type) tags[row.category] = row.type;
-        out.push({ id, name: row.name, lat: +row.lat, lon: +row.lon, tags, mood });
+        const place: Place = { id, name: row.name, lat: +row.lat, lon: +row.lon, tags, mood };
+        // Nominatim’s box is [south, north, west, east].
+        const bb = row.boundingbox?.map(Number);
+        if (bb && bb.length === 4 && row.osm_type !== "node") {
+          place.area = Math.round(boxArea(bb[0], bb[2], bb[1], bb[3]));
+          place.bounds = { s: bb[0], n: bb[1], w: bb[2], e: bb[3] };
+        }
+        out.push(place);
       }
     } catch (e) {
       if (opts.signal?.aborted) throw e;

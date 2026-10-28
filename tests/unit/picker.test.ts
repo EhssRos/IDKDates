@@ -45,7 +45,7 @@ describe("picking", () => {
   });
   it("favors well documented places", () => {
     expect(weight({ tags: { wikidata: "Q1", website: "x", opening_hours: "24/7" } })).toBeGreaterThan(weight({ tags: {} }));
-    expect(weight({ tags: { leisure: "park" } })).toBeLessThan(weight({ tags: {} }));
+    expect(weight({ tags: { leisure: "park" }, area: 500000 })).toBeGreaterThan(weight({ tags: { leisure: "park" } }));
     const list: { tags: Tags; name: "plain" | "rich" }[] = [{ tags: {}, name: "plain" }, { tags: { wikidata: "Q1", website: "x" }, name: "rich" }];
     const rng = seeded(7);
     const counts = { plain: 0, rich: 0 };

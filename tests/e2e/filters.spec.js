@@ -73,8 +73,11 @@ test("clubs come from nightclubs and live music venues", async ({ app, page, wor
   expect(world.queries.at(-1)).toContain('["amenity"~"^(nightclub|music_venue)$"]');
 });
 
-test("nature includes lakes", async ({ app, page, world }) => {
-  world.places = [place({ natural: "water", water: "lake", name: "Schlachtensee" }, { type: "way" })];
+test("nature includes lakes, but not the pond in someone’s garden", async ({ app, page, world }) => {
+  world.places = [
+    place({ natural: "water", name: "Schlachtensee" }, { type: "relation", size: 1500 }),
+    place({ natural: "water", water: "lake", name: "Garden Pond" }, { type: "way", size: 15 })
+  ];
   await app.onlyMood("Nature");
   await app.refine("By the water").click();
   await app.pick();
@@ -96,4 +99,55 @@ test("filters are remembered", async ({ app, page }) => {
   await app.refine("Burgers").click();
   await page.reload();
   await expect(app.refine("Burgers")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("nature leaves out pocket parks and tiny ponds, and says so", async ({ app, page, world }) => {
+  world.places = [
+    place({ leisure: "park", name: "Pocket Park" }, { type: "way", size: 40 }),
+    place({ natural: "water", name: "Backyard Pond" }, { type: "way", size: 12 })
+  ];
+  await app.onlyMood("Nature");
+  await app.pick();
+  await expect(page.locator(".why-list li")).toHaveText(["2 are too small or minor for an outing"]);
+});
+
+test("nature finds big parks, forests and botanical gardens", async ({ app, world }) => {
+  world.places = [
+    place({ leisure: "park", name: "Volkspark" }, { type: "way", size: 400 }),
+    place({ landuse: "forest", name: "Stadtwald" }, { type: "relation", size: 2000 }),
+    place({ leisure: "garden", "garden:type": "botanical", name: "Botanic Garden" }, { type: "way", size: 120 })
+  ];
+  await app.onlyMood("Nature");
+  expect(await app.pickMany(14)).toEqual(new Set(["Volkspark", "Stadtwald", "Botanic Garden"]));
+});
+
+test("history finds castles and notable memorials, not Stolpersteine", async ({ app, world, page }) => {
+  world.places = [
+    place({ historic: "memorial", memorial: "stolperstein", name: "Stolperstein für A. B." }),
+    place({ historic: "memorial", memorial: "plaque", name: "Plaque" }),
+    place({ historic: "castle", name: "Old Castle" }, { type: "way", size: 120 }),
+    place({ historic: "memorial", memorial: "statue", wikidata: "Q42", name: "Famous Memorial" })
+  ];
+  await app.onlyMood("Culture");
+  await app.refine("History").click();
+  expect(await app.pickMany(24)).toEqual(new Set(["Old Castle", "Famous Memorial"]));
+  const q = world.queries.at(-1);
+  expect(q).toContain('nwr["historic"~"^(castle|palace|fort|manor|monastery|ruins|archaeological_site|city_gate|citywalls|castle_wall|tower|battlefield|aqueduct|monument)$"]');
+  expect(q).toContain('["wikidata"]');
+});
+
+test("nature reserves: big ones are measured to their nearest edge, protection zones are left out", async ({ app, page, world }) => {
+  // About 6 km across, its middle 4 km away, its southern edge 1 km away.
+  const reserve = place({ leisure: "nature_reserve", boundary: "protected_area", protect_class: "4", name: "Tegeler Fließ" }, { type: "relation", north: 0.036, size: 6000 });
+  world.places = [reserve, place({ boundary: "protected_area", protect_class: "12", name: "Water Protection Zone III" }, { type: "relation", size: 3000 })];
+  await app.onlyMood("Nature");
+  await app.refine("Nature reserves").click();
+  await app.mode("Foot");
+  await app.travel(25);
+  expect(await app.pickMany(4)).toEqual(new Set(["Tegeler Fließ"]));
+  await expect(app.ticket()).toContainText("Nature reserve");
+  await expect(app.ticket()).toContainText("To the edge");
+  const href = await page.getByRole("link", { name: "Directions" }).getAttribute("href");
+  const lat = Number(new URL(href).searchParams.get("destination").split(",")[0]);
+  expect(lat).toBeCloseTo(reserve.bounds.minlat, 5);
 });

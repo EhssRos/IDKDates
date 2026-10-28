@@ -6,18 +6,30 @@ const KIND: Record<string, string> = {
   bowling_alley: "Bowling", escape_game: "Escape room", amusement_arcade: "Arcade", miniature_golf: "Mini golf", trampoline_park: "Trampoline park",
   water_park: "Water park", ice_rink: "Ice rink", cinema: "Cinema", theme_park: "Theme park",
   park: "Park", nature_reserve: "Nature reserve", garden: "Garden", viewpoint: "Viewpoint", picnic_site: "Picnic spot", peak: "Peak", beach: "Beach",
-  waterfall: "Waterfall", water: "Lake",
+  waterfall: "Waterfall", water: "Lake", swimming_area: "Swimming spot", hill: "Hill", forest: "Forest", wood: "Woods",
+  national_park: "National park", protected_area: "Nature reserve", public_bath: "Public bath", food_court: "Food court",
+  concert_hall: "Concert hall", palace: "Palace", monastery: "Monastery", archaeological_site: "Archaeological site",
+  citywalls: "City walls", castle_wall: "Castle walls", tower: "Historic tower", battlefield: "Battlefield", aqueduct: "Aqueduct",
+  memorial: "Memorial", building: "Historic building", church: "Historic church", ship: "Historic ship", attraction: "Sight",
   museum: "Museum", gallery: "Gallery", zoo: "Zoo", aquarium: "Aquarium", theatre: "Theatre", arts_centre: "Arts centre",
   castle: "Castle", ruins: "Ruins", monument: "Monument", fort: "Fort", city_gate: "City gate", manor: "Manor house"
 };
-const SPORT: Record<string, string> = { climbing: "Climbing", karting: "Go-karts", laser_tag: "Laser tag", paintball: "Paintball", bowling: "Bowling", "10pin": "Bowling" };
+const SPORT: Record<string, string> = { climbing: "Climbing", bouldering: "Bouldering", karting: "Go-karts", laser_tag: "Laser tag", paintball: "Paintball", bowling: "Bowling", "10pin": "Bowling", "9pin": "Bowling", swimming: "Swimming pool" };
 
 const prettify = (v: string) => v.split(";")[0].replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase());
 
 /** A friendly name for what kind of place this is. */
 export function kindOf(t: Tags): string {
-  for (const key of ["amenity", "leisure", "tourism", "natural", "historic", "waterway"]) {
-    const value = t[key];
+  if (t.leisure === "garden" && /^(botanical|arboretum)$/.test(t["garden:type"] || "")) return "Botanical garden";
+  if (t.boundary === "national_park" || (t.boundary === "protected_area" && t.protect_class === "2")) return "National park";
+  if (t.leisure === "sports_centre" && t.sport) {
+    const s = SPORT[t.sport.split(";")[0]];
+    if (s) return s;
+  }
+  // “Sight” is the vaguest description, so anything more specific wins.
+  const tourism = t.tourism === "attraction" ? undefined : t.tourism;
+  const candidates = [t.amenity, t.leisure, tourism, t.historic, t.natural, t.landuse === "forest" ? "forest" : undefined, t.boundary, t.waterway, t.tourism];
+  for (const value of candidates) {
     const base = value ? KIND[value] : undefined;
     if (!base) continue;
     if (t.cuisine && (value === "restaurant" || value === "fast_food")) {

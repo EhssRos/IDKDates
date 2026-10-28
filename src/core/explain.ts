@@ -15,6 +15,7 @@ export function leftOutText(r: LeftOut, s: Settings, now = new Date(), locale?: 
   switch (r.why) {
     case "noStart": return "no starting point set";
     case "turnedDown": return "you turned it down";
+    case "minor": return "too small or minor for an outing";
     case "visited": return "you’ve been there already";
     case "chain": return "it’s a big chain";
     case "filters": return "doesn’t match your filters";
@@ -41,6 +42,7 @@ export function leftOutSummary(counts: LeftOutCounts, s: Settings): string[] {
     visited: n => `${n === 1 ? "1 place" : `${n} places`} you’ve been to already`,
     turnedDown: n => `${n === 1 ? "1 place" : `${n} places`} you turned down`,
     mood: n => `${n} ${n === 1 ? "doesn’t" : "don’t"} fit the moods you picked`,
+    minor: n => `${are(n)} too small or minor for an outing`,
     noStart: () => "no starting point is set"
   };
   return (Object.entries(counts) as [LeftOut["why"], number][])

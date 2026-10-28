@@ -6,12 +6,19 @@ export type Tags = Record<string, string>;
 
 export interface LatLon { lat: number; lon: number }
 
+/** The box around a mapped shape, in degrees. */
+export interface Bounds { s: number; w: number; n: number; e: number }
+
 export interface Place extends LatLon {
   /** OpenStreetMap id such as "node/123". */
   id: string;
   name: string;
   tags: Tags;
   mood: MoodId;
+  /** Rough size in m² of mapped areas (parks, lakes, forests); missing for points. */
+  area?: number;
+  /** The box around mapped areas, used to measure the way to their nearest edge. */
+  bounds?: Bounds;
 }
 
 export interface StartPoint extends LatLon {
@@ -70,6 +77,8 @@ export interface SavedPlace extends LatLon {
   /** Which moods it fits. Detected from the map data, and editable. */
   moods: MoodId[];
   added: number;
+  area?: number;
+  bounds?: Bounds;
 }
 
 export interface PlaceList {

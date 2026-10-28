@@ -49,6 +49,8 @@ The dependencies only point one way: `web` uses `data` and `core`, `data` uses `
 
 **Switching the place data provider** (say, to a paid places service for a public launch) means writing a new module next to `data/overpass.ts` that returns the same `Place` objects. Nothing in `core` or `web` changes.
 
+**What each mood finds** is defined in `core/moods.ts`, following how places are actually tagged on OpenStreetMap. `core/quality.ts` then leaves out matches that aren’t worth an outing (backyard ponds, pocket parks, memorial plaques), using the size of the mapped shape and whether a place has a Wikipedia or Wikidata entry. Both are covered by `tests/unit/quality.test.ts`.
+
 **Design changes** start in the design system: copy its `tokens.json` into `design/`, then `npm run tokens`.
 
 ## Tests

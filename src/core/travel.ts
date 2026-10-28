@@ -1,4 +1,4 @@
-import type { LatLon, ModeId } from "./types";
+import type { Bounds, LatLon, ModeId } from "./types";
 
 export interface Mode {
   label: string;
@@ -46,3 +46,18 @@ export const radiusM = (minutes: number, mode: ModeId): number =>
 
 export const fmtKm = (km: number): string =>
   km < 1 ? `${Math.round(km * 100) * 10} m` : `${km.toFixed(km < 10 ? 1 : 0)} km`;
+
+/**
+ * Where to head for: the place itself, or for big areas (a nature reserve, a forest, a lake)
+ * the nearest point of the box around it, rather than its middle, which may be kilometers
+ * inside or in the middle of the water.
+ */
+export function goalFor(p: LatLon & { bounds?: Bounds }, from: LatLon | null): LatLon {
+  const b = p.bounds;
+  if (!b || !from) return { lat: p.lat, lon: p.lon };
+  const lat = Math.min(b.n, Math.max(b.s, from.lat));
+  const lon = Math.min(b.e, Math.max(b.w, from.lon));
+  // Already inside the box: head for the middle, there’s no better guess.
+  if (lat === from.lat && lon === from.lon) return { lat: p.lat, lon: p.lon };
+  return { lat, lon };
+}

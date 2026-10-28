@@ -1,4 +1,6 @@
 import { selectorsFor } from "../core/filters";
+import { MOODS } from "../core/moods";
+import { boxArea } from "../core/quality";
 import type { LatLon, MoodId, Place, Refinements } from "../core/types";
 import { fetchWithTimeout, HttpError, isAbort } from "./http";
 import type { PlaceCache } from "./placeCache";
@@ -46,24 +48,34 @@ export function boxAround(at: LatLon, radiusM: number) {
  */
 export function buildQuery(mood: MoodId, refine: Refinements, at: LatLon, radiusM: number): string {
   const b = boxAround(at, radiusM);
-  const parts = selectorsFor(mood, refine).map(s => `nw${s}["name"](around:${radiusM},${at.lat},${at.lon});`).join("");
-  return `[out:json][timeout:25][bbox:${b.s},${b.w},${b.n},${b.e}];(${parts});out center tags 500;`;
+  const types = MOODS[mood].relations ? "nwr" : "nw";
+  const parts = selectorsFor(mood, refine).map(s => `${types}${s}["name"](around:${radiusM},${at.lat},${at.lon});`).join("");
+  // “bb” returns each shape’s bounding box: its middle is where we send you, its size weeds out tiny features.
+  return `[out:json][timeout:25][bbox:${b.s},${b.w},${b.n},${b.e}];(${parts});out tags bb 500;`;
 }
 
 const PRIVATE = /^(private|no|customers)$/;
 
-interface OsmElement { type: string; id: number; lat?: number; lon?: number; center?: LatLon; tags?: Record<string, string> }
+interface OsmBounds { minlat: number; minlon: number; maxlat: number; maxlon: number }
+interface OsmElement { type: string; id: number; lat?: number; lon?: number; center?: LatLon; bounds?: OsmBounds; tags?: Record<string, string> }
 interface OsmAnswer { elements?: OsmElement[]; remark?: string }
 
 export function parseElements(elements: OsmElement[], mood: MoodId): Place[] {
   const seen = new Set<string>();
   const out: Place[] = [];
   for (const el of elements) {
-    const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+    const b = el.bounds;
+    const lat = el.lat ?? el.center?.lat ?? (b ? (b.minlat + b.maxlat) / 2 : undefined);
+    const lon = el.lon ?? el.center?.lon ?? (b ? (b.minlon + b.maxlon) / 2 : undefined);
     const name = el.tags?.name;
     if (lat == null || lon == null || !name || seen.has(name) || PRIVATE.test(el.tags?.access || "")) continue;
     seen.add(name);
-    out.push({ id: `${el.type}/${el.id}`, name, lat, lon, tags: el.tags!, mood });
+    const place: Place = { id: `${el.type}/${el.id}`, name, lat, lon, tags: el.tags!, mood };
+    if (b) {
+      place.area = Math.round(boxArea(b.minlat, b.minlon, b.maxlat, b.maxlon));
+      place.bounds = { s: b.minlat, w: b.minlon, n: b.maxlat, e: b.maxlon };
+    }
+    out.push(place);
   }
   return out;
 }

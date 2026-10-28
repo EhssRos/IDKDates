@@ -18,8 +18,11 @@ describe("map query", () => {
     const q = buildQuery("food", {}, at, 1000);
     const b = boxAround(at, 1000);
     expect(q).toContain(`[bbox:${b.s},${b.w},${b.n},${b.e}]`);
-    expect(q).toContain('nw["amenity"~"^(restaurant|fast_food|ice_cream)$"]["name"](around:1000,52.52,13.405);');
+    expect(q).toContain('nw["amenity"~"^(restaurant|fast_food|ice_cream|food_court)$"]["name"](around:1000,52.52,13.405);');
     expect(q).not.toContain("nwr");
+    expect(q).toContain("out tags bb 500;");
+    // Big parks, lakes, forests and castles are often relations.
+    expect(buildQuery("nature", {}, at, 1000)).toContain('nwr["leisure"="park"]["name"]');
     expect(q).not.toContain("access");
     expect(b.n - b.s).toBeCloseTo(2000 / 111320, 4);
   });

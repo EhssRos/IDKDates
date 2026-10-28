@@ -1,32 +1,11 @@
 import type { MoodId } from "./types";
 
-export interface Mood { label: string; selectors: string[] }
-
-/** The moods and the OpenStreetMap features each one draws from. */
-export const MOODS: Record<MoodId, Mood> = {
-  food: { label: "Food", selectors: ['["amenity"~"^(restaurant|fast_food|ice_cream)$"]'] },
-  drinks: { label: "Drinks & coffee", selectors: ['["amenity"~"^(cafe|bar|pub|biergarten)$"]'] },
-  clubs: { label: "Clubs", selectors: ['["amenity"~"^(nightclub|music_venue)$"]'] },
-  action: { label: "Action", selectors: [
-    '["leisure"~"^(bowling_alley|escape_game|amusement_arcade|miniature_golf|trampoline_park|water_park|ice_rink)$"]',
-    '["amenity"="cinema"]',
-    '["tourism"="theme_park"]',
-    '["sport"~"^(climbing|karting|laser_tag|paintball|bowling|10pin)$"]'
-  ] },
-  nature: { label: "Nature", selectors: [
-    '["leisure"~"^(park|nature_reserve|garden)$"]',
-    '["tourism"~"^(viewpoint|picnic_site)$"]',
-    '["natural"~"^(peak|beach)$"]',
-    '["natural"="water"]["water"~"^(lake|reservoir)$"]',
-    '["waterway"="waterfall"]'
-  ] },
-  culture: { label: "Culture", selectors: [
-    '["tourism"~"^(museum|gallery|zoo|aquarium)$"]',
-    '["amenity"~"^(theatre|arts_centre)$"]',
-    '["historic"~"^(castle|ruins|monument|fort|city_gate|manor)$"]'
-  ] }
-};
-export const MOOD_IDS = Object.keys(MOODS) as MoodId[];
+/*
+ * What each mood draws from OpenStreetMap, based on how places are actually tagged
+ * (see the OpenStreetMap wiki for amenity=*, leisure=*, tourism=*, historic=*, natural=*).
+ * Very small or minor features that technically match (a backyard pond, a pocket park,
+ * a memorial plaque) are weeded out afterwards by core/quality.ts.
+ */
 
 export interface RefineOption {
   label: string;
@@ -39,8 +18,8 @@ export interface Refine { ask: string; options: Record<string, RefineOption> }
 
 const cuisine = (list: string, amenity = "restaurant|fast_food") =>
   [`["amenity"~"^(${amenity})$"]["cuisine"~"(^|;) *(${list}) *(;|$)",i]`];
+const sport = (list: string) => `["sport"~"(^|;) *(${list}) *(;|$)"]`;
 
-/** The playful “anything specific?” follow-up per mood. */
 export const REFINE: Record<MoodId, Refine> = {
   food: { ask: "Craving anything?", options: {
     asian: { label: "Asian", q: cuisine("asian|chinese|japanese|sushi|ramen|thai|vietnamese|korean|noodle|dim_sum|indonesian|malaysian|taiwanese|filipino|pho") },
@@ -73,31 +52,73 @@ export const REFINE: Record<MoodId, Refine> = {
     queer: { label: "LGBTQ+", group: "queer", q: ['["amenity"~"^(nightclub|bar|pub)$"]["lgbtq"~"^(primary|only|welcome|yes)$"]'] }
   } },
   action: { ask: "What gets you going?", options: {
-    bowling: { label: "Bowling", q: ['["leisure"="bowling_alley"]', '["sport"~"^(bowling|10pin|9pin)$"]'] },
+    bowling: { label: "Bowling", q: ['["leisure"="bowling_alley"]', `["leisure"="sports_centre"]${sport("10pin|9pin|bowling")}`] },
     escape: { label: "Escape room", q: ['["leisure"="escape_game"]'] },
-    climb: { label: "Climbing", q: ['["sport"~"^(climbing|bouldering)$"]'] },
+    climb: { label: "Climbing", q: [`["leisure"="sports_centre"]${sport("climbing|bouldering")}`] },
     minigolf: { label: "Mini golf", q: ['["leisure"="miniature_golf"]'] },
     cinema: { label: "Cinema", q: ['["amenity"="cinema"]'] },
     arcade: { label: "Arcade", q: ['["leisure"="amusement_arcade"]'] },
-    karting: { label: "Go-karts", q: ['["sport"="karting"]'] },
+    karting: { label: "Go-karts", q: ['["leisure"~"^(track|sports_centre)$"]["sport"="karting"]'] },
     jump: { label: "Trampolines", q: ['["leisure"="trampoline_park"]'] },
-    icewater: { label: "Ice & water", q: ['["leisure"~"^(ice_rink|water_park)$"]'] },
+    icewater: { label: "Swimming & ice", q: ['["leisure"~"^(ice_rink|water_park)$"]', '["amenity"="public_bath"]', `["leisure"="sports_centre"]${sport("swimming")}`] },
     theme: { label: "Theme park", q: ['["tourism"="theme_park"]'] },
-    tag: { label: "Laser tag & paintball", q: ['["sport"~"^(laser_tag|paintball)$"]'] }
+    tag: { label: "Laser tag & paintball", q: [`["leisure"~"^(sports_centre|pitch)$"]${sport("laser_tag|paintball")}`] }
   } },
   nature: { ask: "What kind of outside?", options: {
-    parks: { label: "Parks & gardens", q: ['["leisure"~"^(park|garden)$"]'] },
-    water: { label: "By the water", q: ['["natural"="beach"]', '["natural"="water"]["water"~"^(lake|reservoir)$"]', '["waterway"="waterfall"]'] },
-    views: { label: "A view", q: ['["tourism"="viewpoint"]', '["natural"="peak"]'] },
-    wild: { label: "Wild", q: ['["leisure"="nature_reserve"]'] },
+    parks: { label: "Parks & gardens", q: ['["leisure"="park"]', '["leisure"="garden"]["garden:type"!~"^(residential|private|roof_garden|community)$"]'] },
+    woods: { label: "Woods", q: ['["landuse"="forest"]', '["natural"="wood"]'] },
+    water: { label: "By the water", q: [
+      '["natural"="beach"]',
+      // Lakes are often tagged without a water=* type; the size check keeps out ponds.
+      '["natural"="water"]["water"!~"^(pond|basin|wastewater|reflecting_pool|moat|canal|river|stream|ditch|fishpond|lock|stream_pool)$"]',
+      '["leisure"="swimming_area"]',
+      '["waterway"="waterfall"]'
+    ] },
+    views: { label: "A view", q: ['["tourism"="viewpoint"]', '["natural"~"^(peak|hill)$"]'] },
+    // Nature reserves are mostly tagged leisure=nature_reserve. Protected areas also include water and soil protection
+    // zones and huge landscape areas, so only the visitable nature classes count (not 1a, strict reserves closed to visitors).
+    wild: { label: "Nature reserves", q: [
+      '["leisure"="nature_reserve"]',
+      '["boundary"="national_park"]',
+      '["boundary"="protected_area"]["protect_class"~"^(1b|2|3|4|7)$"]'
+    ] },
     picnic: { label: "Picnic spot", q: ['["tourism"="picnic_site"]'] }
   } },
   culture: { ask: "Into anything in particular?", options: {
     museum: { label: "Museums", q: ['["tourism"="museum"]'] },
     art: { label: "Art", q: ['["tourism"="gallery"]', '["amenity"="arts_centre"]'] },
-    theatre: { label: "Theatre", q: ['["amenity"="theatre"]'] },
-    history: { label: "History", q: ['["historic"~"^(castle|ruins|monument|fort|city_gate|manor)$"]'] },
+    stage: { label: "Theatre & concerts", q: ['["amenity"~"^(theatre|concert_hall)$"]'] },
+    history: { label: "History", q: [
+      '["historic"~"^(castle|palace|fort|manor|monastery|ruins|archaeological_site|city_gate|citywalls|castle_wall|tower|battlefield|aqueduct|monument)$"]',
+      // Common historic features are only worth a trip when notable enough to have a Wikidata entry.
+      '["historic"~"^(memorial|building|church|ship|aircraft|locomotive|tank|wreck|mine)$"]["wikidata"]',
+      '["tourism"="attraction"]["historic"]',
+      '["tourism"="museum"]["museum"~"^(history|military|archaeological|local|open_air)$"]'
+    ] },
+    sights: { label: "Famous sights", q: ['["tourism"="attraction"]["wikidata"]'] },
     animals: { label: "Animals", q: ['["tourism"~"^(zoo|aquarium)$"]'] },
     free: { label: "Free entry", group: "free", q: ['["tourism"~"^(museum|gallery|zoo|aquarium)$"]["fee"="no"]', '["amenity"~"^(theatre|arts_centre)$"]["fee"="no"]'] }
   } }
 };
+
+export interface Mood {
+  label: string;
+  selectors: string[];
+  /** Also ask for relations: big parks, lakes, forests and castles are often mapped that way. */
+  relations?: boolean;
+}
+
+/** Everything a mood covers: for some moods that’s exactly the union of its “anything specific?” options. */
+const all = (m: MoodId, except: string[] = []) =>
+  [...new Set(Object.entries(REFINE[m].options).filter(([k]) => !except.includes(k)).flatMap(([, o]) => o.q))];
+
+/** The moods and the OpenStreetMap features each one draws from. */
+export const MOODS: Record<MoodId, Mood> = {
+  food: { label: "Food", selectors: ['["amenity"~"^(restaurant|fast_food|ice_cream|food_court)$"]'] },
+  drinks: { label: "Drinks & coffee", selectors: ['["amenity"~"^(cafe|bar|pub|biergarten)$"]'] },
+  clubs: { label: "Clubs", selectors: ['["amenity"~"^(nightclub|music_venue)$"]'] },
+  action: { label: "Action", selectors: all("action") },
+  nature: { label: "Nature", selectors: all("nature"), relations: true },
+  culture: { label: "Culture", selectors: all("culture", ["free"]), relations: true }
+};
+export const MOOD_IDS = Object.keys(MOODS) as MoodId[];

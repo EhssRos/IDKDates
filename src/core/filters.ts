@@ -1,14 +1,16 @@
 import { MOODS, REFINE } from "./moods";
 import type { MoodId, Place, Refinements, Tags } from "./types";
 
-const COND = /\["([^"]+)"(=|~|!~)"((?:[^"\\]|\\.)*)"(,i)?\]/g;
+// One condition: ["key"="value"], ["key"~"regex"(,i)], ["key"!~"regex"], ["key"] (has the key) or [!"key"] (doesn’t).
+const COND = /\[(!?)"([^"]+)"(?:(=|~|!~)"((?:[^"\\]|\\.)*)"(,i)?)?\]/g;
 const cache = new Map<string, (t: Tags) => boolean>();
 
 /** Tests tags against an OpenStreetMap selector chain the same way the map server does. */
 export function chainTest(chain: string): (t: Tags) => boolean {
   let fn = cache.get(chain);
   if (!fn) {
-    const conds = [...chain.matchAll(COND)].map(([, k, op, v, i]) => {
+    const conds = [...chain.matchAll(COND)].map(([, not, k, op, v, i]) => {
+      if (!op) return (t: Tags) => (t[k] != null) !== !!not;
       const re = op === "=" ? null : new RegExp(v, i ? "i" : "");
       return (t: Tags) => {
         const val = t[k];

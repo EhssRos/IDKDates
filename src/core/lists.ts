@@ -2,7 +2,7 @@ import { chainTest, refineOk } from "./filters";
 import { openInfo, type OpeningHoursLib } from "./hours";
 import { MOOD_IDS, MOODS } from "./moods";
 import { arrivalAt, minutesTo, type LeftOut } from "./picker";
-import type { MoodId, Place, PlaceList, SavedPlace, Settings, Tags } from "./types";
+import type { Bounds, MoodId, Place, PlaceList, SavedPlace, Settings, Tags } from "./types";
 
 /** Which moods a place fits, judged from its map data. */
 export const moodsOf = (tags: Tags): MoodId[] =>
@@ -28,9 +28,10 @@ export function deleteList(lists: PlaceList[], id: string): PlaceList[] {
   return rest.length ? rest : lists.map(l => ({ ...l, places: [] }));
 }
 
-export function toSaved(p: { id: string; name: string; lat: number; lon: number; tags: Tags }, moods?: MoodId[], now = Date.now()): SavedPlace {
+export function toSaved(p: { id: string; name: string; lat: number; lon: number; tags: Tags; area?: number; bounds?: Bounds }, moods?: MoodId[], now = Date.now()): SavedPlace {
   const detected = moods && moods.length ? moods : moodsOf(p.tags);
-  return { id: p.id, name: p.name, lat: p.lat, lon: p.lon, tags: p.tags, moods: detected, added: now };
+  return { id: p.id, name: p.name, lat: p.lat, lon: p.lon, tags: p.tags, moods: detected, added: now,
+    ...(p.area ? { area: p.area } : {}), ...(p.bounds ? { bounds: p.bounds } : {}) };
 }
 
 /** Adds a place to a list once; saving it again keeps the original. */
@@ -87,7 +88,8 @@ export const listPlaceFits = (sp: SavedPlace, c: ListPickContext): boolean => li
 
 /** A saved place as a pickable place, under the first mood it’s being picked for. */
 export const toPlace = (sp: SavedPlace, s: Settings): Place =>
-  ({ id: sp.id, name: sp.name, lat: sp.lat, lon: sp.lon, tags: sp.tags, mood: matchingMoods(sp, s)[0] ?? sp.moods[0] ?? "food" });
+  ({ id: sp.id, name: sp.name, lat: sp.lat, lon: sp.lon, tags: sp.tags, mood: matchingMoods(sp, s)[0] ?? sp.moods[0] ?? "food",
+    ...(sp.area ? { area: sp.area } : {}), ...(sp.bounds ? { bounds: sp.bounds } : {}) });
 
 const isMood = (m: unknown): m is MoodId => MOOD_IDS.includes(m as MoodId);
 
@@ -99,7 +101,10 @@ export function normalizeList(raw: unknown): PlaceList | null {
   const places = Array.isArray(l.places) ? l.places.flatMap((p): SavedPlace[] => {
     if (!p || typeof p !== "object" || typeof p.id !== "string" || typeof p.name !== "string" || typeof p.lat !== "number" || typeof p.lon !== "number") return [];
     const tags = p.tags && typeof p.tags === "object" ? (p.tags as Tags) : {};
-    return [{ id: p.id, name: p.name, lat: p.lat, lon: p.lon, tags, moods: Array.isArray(p.moods) ? p.moods.filter(isMood) : moodsOf(tags), added: Number(p.added) || 0 }];
+    const b = p.bounds;
+    const bounds = b && [b.s, b.w, b.n, b.e].every(n => typeof n === "number") ? { bounds: { s: b.s, w: b.w, n: b.n, e: b.e } } : {};
+    return [{ id: p.id, name: p.name, lat: p.lat, lon: p.lon, tags, moods: Array.isArray(p.moods) ? p.moods.filter(isMood) : moodsOf(tags), added: Number(p.added) || 0,
+      ...(typeof p.area === "number" ? { area: p.area } : {}), ...bounds }];
   }) : [];
   return { id: l.id, name: l.name, places };
 }

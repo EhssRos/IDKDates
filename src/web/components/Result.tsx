@@ -3,8 +3,8 @@ import { address, factsSentence, hoursText, kindOf, trimText } from "../../core/
 import { leftOutSummary, leftOutText, suggestFixes } from "../../core/explain";
 import { isNarrowed } from "../../core/filters";
 import { openInfo, openLine } from "../../core/hours";
-import { arrivalAt } from "../../core/picker";
-import { distKm, fmtKm, MODES, travelMin } from "../../core/travel";
+import { arrivalAt, kmTo } from "../../core/picker";
+import { fmtKm, goalFor, MODES, travelMin } from "../../core/travel";
 import type { Partner, PlaceList, Settings } from "../../core/types";
 import { backstory, type Backstory } from "../../data/wiki";
 import { isApple, lang, prefersReducedMotion } from "../platform";
@@ -149,7 +149,8 @@ function Ticket({ picker }: { picker: Picker }) {
     ref.current?.scrollIntoView?.({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
   }, []);
 
-  const km = settings.loc ? distKm(settings.loc, p) : null;
+  const km = settings.loc ? kmTo(p, settings.loc) : null;
+  const goal = goalFor(p, settings.loc);
   const mins = km == null ? null : Math.max(1, Math.round(travelMin(km, settings.mode)));
   const m = MODES[settings.mode];
   const kind = kindOf(t);
@@ -167,7 +168,7 @@ function Ticket({ picker }: { picker: Picker }) {
       <dl className="t-facts" ref={factsRef}>
         {km != null && mins != null && <>
           <div><dt>Getting there</dt><dd>About {mins} min {m.verb}</dd></div>
-          <div><dt>Distance</dt><dd>{fmtKm(km)} away</dd></div>
+          <div><dt>{p.bounds ? "To the edge" : "Distance"}</dt><dd>{km < 0.1 ? "Right nearby" : `${fmtKm(km)} away`}</dd></div>
         </>}
         <div className="wide"><dt>Opening hours</dt><dd>{openLine(open, arrival)}</dd></div>
       </dl>
@@ -179,8 +180,8 @@ function Ticket({ picker }: { picker: Picker }) {
       {addr && <p className="t-addr">{addr}</p>}
       {hours && <details className="t-hours"><summary>Full opening hours</summary><p>{hours}</p></details>}
       <div className="t-links">
-        <a href={`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lon}&travelmode=${m.gmaps}`} target="_blank" rel="noopener">Directions</a>
-        {isApple() && <a href={`https://maps.apple.com/?daddr=${p.lat},${p.lon}&q=${encodeURIComponent(p.name)}&dirflg=${m.apple}`} target="_blank" rel="noopener">Apple Maps</a>}
+        <a href={`https://www.google.com/maps/dir/?api=1&destination=${goal.lat},${goal.lon}&travelmode=${m.gmaps}`} target="_blank" rel="noopener">Directions</a>
+        {isApple() && <a href={`https://maps.apple.com/?daddr=${goal.lat},${goal.lon}&q=${encodeURIComponent(p.name)}&dirflg=${m.apple}`} target="_blank" rel="noopener">Apple Maps</a>}
         {site
           ? <a href={/^https?:\/\//.test(site) ? site : "https://" + site} target="_blank" rel="noopener">Website</a>
           : <a href={`https://www.openstreetmap.org/${p.id}`} target="_blank" rel="noopener">Details</a>}
