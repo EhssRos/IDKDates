@@ -85,6 +85,8 @@ export interface PlaceList {
   id: string;
   name: string;
   places: SavedPlace[];
+  /** For keeping lists in the order they were made, across phones. */
+  created?: number;
 }
 
 export type Partner = "a" | "b";

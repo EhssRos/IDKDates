@@ -31,6 +31,13 @@ for (const scheme of ["light", "dark"]) {
       expect(await scan(page)).toEqual([]);
     });
 
+    test("account screens have no accessibility problems", async ({ app, page }) => {
+      await app.open("#account");
+      expect(await scan(page)).toEqual([]);
+      await app.signIn("alex@example.com", "Alex");
+      expect(await scan(page)).toEqual([]);
+    });
+
     test("timeline with an open entry has no accessibility problems", async ({ app, page }) => {
       await app.seed("history", [{ visit: "v1", placeId: "node/1", name: "Ramen Bar", kind: "Restaurant", lat: 52.52, lon: 13.405, date: Date.parse("2026-10-17T20:00:00+02:00"), loved: true, ratings: { a: 4, b: 0 }, note: "Good broth" }]);
       await app.open("#timeline");

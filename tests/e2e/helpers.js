@@ -1,6 +1,7 @@
 // Shared test setup: fakes every outside service the app talks to,
 // pins the clock and makes randomness repeatable, so every run behaves the same.
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, devices } from "@playwright/test";
+import { FakeSupabase, SUPABASE_HOST } from "./fakeSupabase.js";
 
 const PNG_1PX = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 
@@ -36,6 +37,7 @@ class FakeWorld {
     this.reverse = { address: { suburb: "Mitte", country_code: HOME.cc, state: HOME.state } };
     this.wiki = {};            // wikidata id -> { title, extract }
     this.blockHoursEngine = false;
+    this.supabase = new FakeSupabase(); // the shared backend every phone in the test talks to
     this.slow = null;          // { match: RegExp, ms } to delay matching map queries
     this.hangHosts = [];       // map servers that never answer
     this.placeSearch = [];     // results of searching a place by name (Lists screen)
@@ -48,6 +50,7 @@ class FakeWorld {
 async function installFakes(page, world) {
   await page.route(url => !url.host.startsWith("localhost"), async route => {
     const url = route.request().url();
+    if (new URL(url).host === SUPABASE_HOST) return world.supabase.handle(route);
     if (url.includes("tile.openstreetmap.org")) return route.fulfill({ contentType: "image/png", body: PNG_1PX });
     if (url.includes("nominatim.openstreetmap.org/search")) {
       const q = new URL(url).searchParams.get("q") || "";
@@ -88,18 +91,32 @@ async function installFakes(page, world) {
 // A seeded random number generator, so "random" picks are repeatable.
 const SEEDED_RANDOM = `(() => { let a = 20261024; Math.random = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; })();`;
 
+async function preparePage(page, world, now, errors) {
+  page.on("pageerror", e => errors.push(e.message));
+  await installFakes(page, world);
+  await page.clock.setFixedTime(now);
+  await page.addInitScript(SEEDED_RANDOM);
+}
+
 export const test = base.extend({
   world: async ({}, use) => { await use(new FakeWorld()); },
   // Saturday 24 October 2026, 19:00 in Berlin unless a test sets another time.
   now: [new Date("2026-10-24T19:00:00+02:00"), { option: true }],
   app: async ({ page, world, now }, use) => {
     const errors = [];
-    page.on("pageerror", e => errors.push(e.message));
-    await installFakes(page, world);
-    await page.clock.setFixedTime(now);
-    await page.addInitScript(SEEDED_RANDOM);
+    await preparePage(page, world, now, errors);
     await use(new App(page, world));
     expect(errors, "the app threw JavaScript errors").toEqual([]);
+  },
+  // A second phone (the partner’s), sharing the same fake world and backend.
+  partner: async ({ browser, world, now }, use) => {
+    const context = await browser.newContext({ ...devices["Pixel 7"], locale: "en-US", timezoneId: "Europe/Berlin", serviceWorkers: "block", baseURL: "http://localhost:4173" });
+    const page = await context.newPage();
+    const errors = [];
+    await preparePage(page, world, now, errors);
+    await use(new App(page, world));
+    await context.close();
+    expect(errors, "the partner’s app threw JavaScript errors").toEqual([]);
   }
 });
 
@@ -112,6 +129,7 @@ class App {
   async seed(key, value) {
     // Seed once per tab, so a reload keeps whatever the test changed.
     await this.page.addInitScript(([k, v]) => {
+      if (!location.protocol.startsWith("http")) return;
       if (sessionStorage.getItem("seeded:" + k)) return;
       localStorage.setItem("idkdates:v1:" + k, JSON.stringify(v));
       sessionStorage.setItem("seeded:" + k, "1");
@@ -137,6 +155,38 @@ class App {
   }
   ticket() { return this.page.locator("#result .ticket"); }
   async pickedName() { return (await this.page.locator(".t-name").textContent()).trim(); }
+  async signIn(email, name) {
+    const p = this.page;
+    if (!(await p.locator("#viewAccount").isVisible())) await p.locator(".account-btn").click();
+    if (name) await p.getByLabel("Your first name").fill(name);
+    await p.getByLabel("Your email").fill(email);
+    await p.getByRole("button", { name: "Email me a sign-in link" }).click();
+    await p.getByLabel("Code from the email").fill("123456");
+    await p.getByRole("button", { name: /^Sign in/ }).click();
+    await expect(p.locator("#syncStatus")).toContainText("Synced");
+  }
+  /** Signs in the way the real email does it: by opening the link in it. */
+  async signInWithLink(email, name) {
+    const p = this.page;
+    if (!(await p.locator("#viewAccount").isVisible())) await p.locator(".account-btn").click();
+    if (name) await p.getByLabel("Your first name").fill(name);
+    await p.getByLabel("Your email").fill(email);
+    await p.getByRole("button", { name: "Email me a sign-in link" }).click();
+    await expect(p.locator(".acc-sent")).toContainText(email);
+    // Tapping the link in the email opens the app fresh.
+    await p.goto("about:blank");
+    await p.goto(this.world.supabase.signInLink(email));
+    await expect(p.locator("#syncStatus")).toContainText("Synced");
+  }
+  async syncNow() {
+    const p = this.page;
+    const pressed = p.locator("#views [aria-pressed=true]");
+    const back = (await pressed.count()) ? await pressed.textContent() : null;
+    if (!(await p.locator("#viewAccount").isVisible())) await p.locator(".account-btn").click();
+    await p.getByRole("button", { name: "Sync now" }).click();
+    await expect(p.locator("#syncStatus")).toContainText("Synced");
+    if (back) await p.locator("#views").getByRole("button", { name: back.trim(), exact: true }).click();
+  }
   async pickMany(n) {
     const names = new Set();
     for (let i = 0; i < n; i++) { await this.pick(); if (await this.ticket().count()) names.add(await this.pickedName()); }

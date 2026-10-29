@@ -2,11 +2,14 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { loadHistory, loadLists, loadSettings, saveHistory, saveLists, saveSettings } from "../core/storage";
 import type { PlaceList, Settings, Visit } from "../core/types";
 import { PickView } from "./components/PickView";
+import { SyncDot } from "./components/SyncDot";
 import { Logo } from "./Logo";
+import { useSharing } from "./useSharing";
 import { webStore } from "./platform";
 import { useHashView } from "./useHashView";
 
 const TimelineView = lazy(() => import("./components/TimelineView"));
+const AccountView = lazy(() => import("./components/AccountView"));
 const ListsView = lazy(() => import("./components/ListsView"));
 
 export function App() {
@@ -14,6 +17,10 @@ export function App() {
   const [visits, setVisits] = useState<Visit[]>(() => loadHistory(webStore));
   const [lists, setLists] = useState<PlaceList[]>(() => loadLists(webStore));
   const [view, setView] = useHashView();
+  // An invite link (#join=CODE) opens the account screen with the code ready.
+  const [joinCode, setJoinCode] = useState<string | null>(() => (location.hash.startsWith("#join=") ? decodeURIComponent(location.hash.slice(6)) : null));
+  useEffect(() => { if (joinCode) history.replaceState(null, "", "#account"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const sharing = useSharing(lists, setLists, visits, setVisits, settings.nameA);
 
   useEffect(() => saveSettings(webStore, settings), [settings]);
   useEffect(() => saveHistory(webStore, visits), [visits]);
@@ -21,12 +28,22 @@ export function App() {
   useEffect(() => { document.body.dataset.ready = "1"; }, []);
 
   const update = useCallback((patch: Partial<Settings>) => setSettings(s => ({ ...s, ...patch })), []);
-  const names = { a: settings.nameA.trim() || "Me", b: settings.nameB.trim() || "You" };
+  const partner = sharing.partner;
+  const names = partner
+    ? { a: settings.nameA.trim() || "Me", b: partner.name || "Partner" }
+    : { a: settings.nameA.trim() || "Me", b: settings.nameB.trim() || "You" };
 
   return (
     <main className="wrap">
       <header>
-        <h1 style={{ margin: 0 }}><Logo /></h1>
+        <div className="top">
+          <h1 style={{ margin: 0 }}><Logo /></h1>
+          {sharing.configured && (
+            <button type="button" className="account-btn" aria-pressed={view === "account"} onClick={() => setView("account")}>
+              {sharing.account ? <><SyncDot status={sharing.status} /> {partner ? "Shared" : "Account"}</> : "Share"}
+            </button>
+          )}
+        </div>
         <p className="tagline">You pick the mood. IDKDates picks the place.</p>
       </header>
 
@@ -50,11 +67,20 @@ export function App() {
         )}
       </section>
 
+      <section id="viewAccount" aria-labelledby="h-account" hidden={view !== "account"}>
+        <h2 className="tl-title" id="h-account">{partner ? "Shared with " + (partner.name || "your partner") : "Share with your partner"}</h2>
+        {view === "account" && (
+          <Suspense fallback={null}>
+            <AccountView sharing={sharing} settings={settings} update={update} joinCode={joinCode} clearJoinCode={() => setJoinCode(null)} />
+          </Suspense>
+        )}
+      </section>
+
       <section id="viewTimeline" aria-labelledby="h-tl" hidden={view !== "timeline"}>
         <h2 className="tl-title" id="h-tl">Your timeline</h2>
         {view === "timeline" && (
           <Suspense fallback={null}>
-            <TimelineView visits={visits} setVisits={setVisits} names={names} lists={lists} setLists={setLists} />
+            <TimelineView visits={visits} setVisits={setVisits} names={names} lists={lists} setLists={setLists} partnerRatesThemselves={!!partner} />
           </Suspense>
         )}
       </section>

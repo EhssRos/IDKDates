@@ -220,3 +220,21 @@ footer p{margin:var(--space-1) 0}
 .fixes{margin-top:var(--space-4)}
 .fixes p{font-weight:600;margin-bottom:var(--space-2)}
 .fixes .chips{justify-content:center}
+
+/* Account and sharing */
+header .top{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3)}
+.account-btn{display:inline-flex;align-items:center;gap:var(--space-2);min-height:40px;padding:0 var(--space-4);border:2px solid var(--control);border-radius:var(--radius-pill);background:var(--surface);color:var(--ink);font-weight:600;cursor:pointer;white-space:nowrap}
+.account-btn[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.sync-dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid currentColor;flex:none}
+.sync-dot.synced{background:currentColor}
+.sync-dot.syncing{border-style:dashed}
+.sync-dot.error,.sync-dot.offline{border-color:var(--danger);background:var(--danger)}
+.account-panel{display:grid;gap:var(--space-3)}
+.account-panel p{margin:0}
+.acc-h{margin:0;font-size:19px;line-height:24px;font-weight:700}
+.acc-label{display:grid;gap:var(--space-1);font-size:14px;line-height:20px;font-weight:600}
+.acc-label input{min-height:var(--space-12);padding:0 var(--space-4);border:2px solid var(--control);border-radius:var(--radius-sm);background:var(--surface);color:var(--ink);font:inherit;font-weight:400;font-size:16px}
+.acc-label input:focus{outline:none;border-color:var(--ink)}
+.invite-link{font-size:14px;line-height:20px;overflow-wrap:anywhere;color:var(--muted)}
+.sync-line{display:flex;align-items:center;gap:var(--space-2);font-weight:600}
+.rate button:disabled{cursor:default;opacity:.8}

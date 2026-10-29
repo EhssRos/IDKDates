@@ -11,12 +11,13 @@ export const moodsOf = (tags: Tags): MoodId[] =>
 export const starterLists = (): PlaceList[] => [{ id: "favorites", name: "Our favorites", places: [] }];
 
 let counter = 0;
-export const newListId = (now = Date.now()) => `l${now.toString(36)}${(counter++).toString(36)}`;
+// Random part, so lists made on two phones at the same moment never get the same id.
+export const newListId = (now = Date.now()) => `l${now.toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export function createList(lists: PlaceList[], name: string, now = Date.now()): { lists: PlaceList[]; id: string } {
   const id = newListId(now);
   const clean = name.trim() || "New list";
-  return { lists: [...lists, { id, name: clean, places: [] }], id };
+  return { lists: [...lists, { id, name: clean, places: [], created: now }], id };
 }
 
 export const renameList = (lists: PlaceList[], id: string, name: string): PlaceList[] =>
@@ -106,5 +107,5 @@ export function normalizeList(raw: unknown): PlaceList | null {
     return [{ id: p.id, name: p.name, lat: p.lat, lon: p.lon, tags, moods: Array.isArray(p.moods) ? p.moods.filter(isMood) : moodsOf(tags), added: Number(p.added) || 0,
       ...(typeof p.area === "number" ? { area: p.area } : {}), ...bounds }];
   }) : [];
-  return { id: l.id, name: l.name, places };
+  return { id: l.id, name: l.name, places, ...(typeof l.created === "number" ? { created: l.created } : {}) };
 }

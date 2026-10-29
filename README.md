@@ -68,6 +68,25 @@ Before the first end-to-end run: `npx playwright install chromium`.
 
 The tests never touch the real internet. Every outside service is faked in `tests/e2e/helpers.js`, the clock is fixed to Saturday 24 October 2026, 19:00 in Berlin, and randomness is seeded, so every run gives the same result. `.github/workflows/test.yml` runs everything on GitHub for every change.
 
+## Sharing between phones (accounts)
+
+Lists, the timeline and ratings can be shared between two phones. Everything is saved on the phone first and synced in the background, so the app keeps working offline. Without a configured backend, the app simply doesn’t offer sharing.
+
+The backend is a free [Supabase](https://supabase.com) project:
+
+1. **Create a project** at supabase.com. Pick an EU region (for example Frankfurt).
+2. **Create the database:** in the dashboard, open **SQL Editor**, paste all of `supabase/schema.sql` and run it. It’s safe to run again after updates.
+3. **Sign-in emails** work as they are: the default email contains a “Sign in” link, which opens the app signed in. (If you later connect your own email service, you can also put the code `{{ .Token }}` into the **Magic Link** and **Confirm signup** templates under **Authentication → Emails**; the app accepts both.)
+4. **Set the addresses:** under **Authentication → URL Configuration**, set **Site URL** to your Render address. To sign in while running the app on your computer, also add `http://localhost:5173` under **Redirect URLs**.
+5. **Connect the app:** in Supabase under **Project Settings → API**, copy the **Project URL** and the **anon public** key. In Render, under your site’s **Environment**, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` with those values, then redeploy. (The anon key is meant to be public; the access rules in the database protect the data.)
+6. **Before inviting other people,** set up your own email sending under **Authentication → Emails → SMTP Settings**. Supabase’s built-in email is only meant for trying things out and sends very few emails per hour.
+
+On iPhone, if the app was added to the home screen, the sign-in link opens in Safari, not in the home-screen app. Sign in from Safari, or set up your own email service and use the code instead.
+
+How it works: `core/sync.ts` turns lists, visits and ratings into small items and decides what changed where; `core/syncEngine.ts` runs a sync (fetch changes, merge, send changes); `data/supabaseBackend.ts` talks to Supabase; `web/useSharing.ts` decides when to sync (shortly after changes, every 20 seconds while open, when the app comes back). If both phones change the same thing, the change that reaches the server last wins. Each person’s rating belongs to them, so ratings never conflict.
+
+Tests: `tests/unit/sync.test.ts` simulates two phones against an in-memory backend; `tests/e2e/sharing.spec.js` runs two phones in two browsers against a fake Supabase (`tests/e2e/fakeSupabase.js`). The database rules in `supabase/schema.sql` were also checked against a real PostgreSQL.
+
 ## Saved data
 
 Settings, your lists, the timeline and recent map results are stored on the device under keys starting with `idkdates:v1:`. `core/storage.ts` migrates older data on start, including data saved while the app was called Eeny, and repairs damaged values instead of failing.

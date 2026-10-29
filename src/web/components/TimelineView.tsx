@@ -12,9 +12,11 @@ interface Props {
   names: Record<Partner, string>;
   lists: PlaceList[];
   setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
+  /** When the partner shares from their own phone, only they can change their rating. */
+  partnerRatesThemselves?: boolean;
 }
 
-export default function TimelineView({ visits, setVisits, names, lists, setLists }: Props) {
+export default function TimelineView({ visits, setVisits, names, lists, setLists, partnerRatesThemselves = false }: Props) {
   const [filter, setFilter] = useState<TimelineFilter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export default function TimelineView({ visits, setVisits, names, lists, setLists
             <h3 className="tl-month">{g.month}</h3>
             <ol className="tl-list">
               {g.visits.map(v => (
-                <Entry key={v.visit} v={v} names={names} open={open === v.visit} confirming={confirm === v.visit} lists={lists} setLists={setLists}
+                <Entry key={v.visit} v={v} names={names} open={open === v.visit} confirming={confirm === v.visit} lists={lists} setLists={setLists} partnerLocked={partnerRatesThemselves}
                   onToggle={() => { setOpen(open === v.visit ? null : v.visit); setConfirm(null); }}
                   onRate={(w, n) => change(v.visit, x => ({ ...x, ratings: { ...x.ratings, [w]: x.ratings[w] === n ? 0 : n } }))}
                   onNote={note => change(v.visit, x => ({ ...x, note }))}
@@ -82,11 +84,11 @@ const Dots = ({ n }: { n: number }) => (
 
 interface EntryProps {
   v: Visit; names: Record<Partner, string>; open: boolean; confirming: boolean;
-  lists: PlaceList[]; setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>;
+  lists: PlaceList[]; setLists: React.Dispatch<React.SetStateAction<PlaceList[]>>; partnerLocked: boolean;
   onToggle: () => void; onRate: (w: Partner, n: number) => void; onNote: (s: string) => void; onLove: () => void; onRemove: () => void;
 }
 
-function Entry({ v, names, open, confirming, lists, setLists, onToggle, onRate, onNote, onLove, onRemove }: EntryProps) {
+function Entry({ v, names, open, confirming, lists, setLists, partnerLocked, onToggle, onRate, onNote, onLove, onRemove }: EntryProps) {
   const avg = avgRating(v);
   const date = new Date(v.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
   const bodyId = `tlb-${v.visit}`;
@@ -107,7 +109,8 @@ function Entry({ v, names, open, confirming, lists, setLists, onToggle, onRate, 
               <span className="who">{names[w]}</span>
               <span className="rate" role="group" aria-label={`${names[w]}’s rating`}>
                 {[1, 2, 3, 4, 5].map(n => (
-                  <button key={n} type="button" className={n <= v.ratings[w] ? "on" : ""} aria-pressed={n === v.ratings[w]} aria-label={`${n} of 5`} onClick={() => onRate(w, n)} />
+                  <button key={n} type="button" className={n <= v.ratings[w] ? "on" : ""} aria-pressed={n === v.ratings[w]} aria-label={`${n} of 5`}
+                    disabled={w === "b" && partnerLocked} onClick={() => onRate(w, n)} />
                 ))}
               </span>
             </div>
